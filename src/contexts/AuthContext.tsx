@@ -16,10 +16,10 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    signup: (email: string, password: string) => Promise<void>;
-    login: (email: string, password: string) => Promise<void>;
+    signup: (email: string, password: string) => Promise<any>;
+    login: (email: string, password: string) => Promise<any>;
     logout: () => Promise<void>;
-    loginWithGoogle: () => Promise<void>;
+    loginWithGoogle: () => Promise<any>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
