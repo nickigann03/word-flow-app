@@ -1,12 +1,14 @@
 "use client"
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { NoteEditor } from './NoteEditor';
+import { BibleReader } from './BibleReaderPanel';
+import { ReformedAIChat } from './ReformedAIChat';
 import { useAuth } from '@/contexts/AuthContext';
 import firestoreService, { Folder, Note } from '@/services/firestoreService';
-import { Plus, FileText, LayoutTemplate } from 'lucide-react';
+import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getAllTemplates } from '@/data/sermonTemplates'; // Need to port this data file too
+import { getAllTemplates } from '@/data/sermonTemplates';
 
 export function Dashboard() {
     const { user } = useAuth();
@@ -15,6 +17,13 @@ export function Dashboard() {
     const [selectedFolder, setSelectedFolder] = useState('recent');
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
     const [view, setView] = useState<'list' | 'editor' | 'templates'>('list');
+
+    // Panel states
+    const [isBibleOpen, setIsBibleOpen] = useState(false);
+    const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+
+    // Reference to the NoteEditor for inserting content
+    const [pendingInsert, setPendingInsert] = useState<{ text: string; reference: string } | null>(null);
 
     useEffect(() => {
         if (user?.uid) {
@@ -34,8 +43,6 @@ export function Dashboard() {
         let data;
         if (folderId === 'recent' || folderId === 'all') {
             data = await firestoreService.getNotes(user.uid);
-            // Client-side sort/filter if 'recent' vs 'all' difference needed, 
-            // but for now both return all notes sorted by date.
         } else {
             data = await firestoreService.getNotesByFolder(folderId);
         }
@@ -82,6 +89,15 @@ export function Dashboard() {
         setView('list');
     };
 
+    // Handler for inserting verses from Bible Reader or AI Chat
+    const handleInsertVerse = useCallback((text: string, reference: string) => {
+        setPendingInsert({ text, reference });
+    }, []);
+
+    // Toggle handlers for panels
+    const handleToggleBible = () => setIsBibleOpen(prev => !prev);
+    const handleToggleAIChat = () => setIsAIChatOpen(prev => !prev);
+
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans">
             <Sidebar
@@ -102,8 +118,13 @@ export function Dashboard() {
                         if (selectedFolder === id) setSelectedFolder('recent');
                     }
                 }}
+                onOpenBible={handleToggleBible}
+                onOpenAIChat={handleToggleAIChat}
+                isBibleOpen={isBibleOpen}
+                isAIChatOpen={isAIChatOpen}
             />
 
+            {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full bg-zinc-950 relative">
                 {view === 'editor' && selectedNote ? (
                     <NoteEditor
@@ -111,12 +132,13 @@ export function Dashboard() {
                         onSave={handleSaveNote}
                         onDelete={() => selectedNote.id && handleDeleteNote(selectedNote.id)}
                         onExport={(fmt, note) => console.log('Export', fmt)}
+                        pendingInsert={pendingInsert}
+                        onInsertComplete={() => setPendingInsert(null)}
                     />
                 ) : view === 'templates' ? (
                     <div className="p-8">
                         <h2 className="text-2xl font-bold mb-6">Choose a Template</h2>
                         <div className="grid grid-cols-3 gap-6">
-                            {/* Quick Template Stub */}
                             {['Blank', '3-Point Sermon', 'Expository'].map(t => (
                                 <div key={t} onClick={() => handleCreateNote(t === 'Blank' ? '' : `## ${t}\n\n`)} className="p-6 bg-zinc-900 border border-zinc-800 hover:border-blue-500 cursor-pointer rounded-xl transition-all">
                                     <LayoutTemplate className="w-8 h-8 mb-4 text-zinc-500" />
@@ -148,16 +170,29 @@ export function Dashboard() {
                             {notes.map(note => (
                                 <div
                                     key={note.id}
-                                    onClick={() => { setSelectedNote(note); setView('editor'); }}
-                                    className="group p-5 bg-zinc-900/50 border border-zinc-800/50 rounded-2xl hover:bg-zinc-900 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-900/10 cursor-pointer transition-all duration-300"
+                                    className="group relative p-5 bg-zinc-900/50 border border-zinc-800/50 rounded-2xl hover:bg-zinc-900 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-900/10 cursor-pointer transition-all duration-300"
                                 >
-                                    <h3 className="font-bold text-lg mb-2 text-zinc-100 group-hover:text-blue-400 transition-colors">{note.title || 'Untitled'}</h3>
-                                    <p className="text-sm text-zinc-500 line-clamp-3">
-                                        {note.content?.replace(/[#*`]/g, '') || 'No content...'}
-                                    </p>
-                                    <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between text-xs text-zinc-600">
-                                        <span>{new Date().toLocaleDateString()}</span>
-                                        <FileText className="w-3 h-3 group-hover:text-blue-500" />
+                                    {/* Delete button - appears on hover */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (note.id) handleDeleteNote(note.id);
+                                        }}
+                                        className="absolute top-3 right-3 p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all z-10"
+                                        title="Delete Note"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+
+                                    <div onClick={() => { setSelectedNote(note); setView('editor'); }}>
+                                        <h3 className="font-bold text-lg mb-2 text-zinc-100 group-hover:text-blue-400 transition-colors pr-8">{note.title || 'Untitled'}</h3>
+                                        <p className="text-sm text-zinc-500 line-clamp-3">
+                                            {note.content?.replace(/[#*`<>]/g, '').substring(0, 150) || 'No content...'}
+                                        </p>
+                                        <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between text-xs text-zinc-600">
+                                            <span>{new Date().toLocaleDateString()}</span>
+                                            <FileText className="w-3 h-3 group-hover:text-blue-500" />
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -172,6 +207,20 @@ export function Dashboard() {
                     </div>
                 )}
             </div>
+
+            {/* Bible Reader Panel */}
+            <BibleReader
+                isOpen={isBibleOpen}
+                onClose={() => setIsBibleOpen(false)}
+                onInsertVerse={handleInsertVerse}
+            />
+
+            {/* Reformed AI Chat Panel */}
+            <ReformedAIChat
+                isOpen={isAIChatOpen}
+                onClose={() => setIsAIChatOpen(false)}
+                onInsertVerse={handleInsertVerse}
+            />
         </div>
     );
 }

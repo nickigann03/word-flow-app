@@ -7,7 +7,9 @@ import {
     Settings,
     LogOut,
     ChevronRight,
-    Trash2
+    Trash2,
+    BookOpen,
+    MessageSquareText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +23,10 @@ interface SidebarProps {
     onCreateFolder: () => void;
     onDeleteFolder?: (id: string) => void;
     onToggleSidebar?: () => void;
+    onOpenBible?: () => void;
+    onOpenAIChat?: () => void;
+    isBibleOpen?: boolean;
+    isAIChatOpen?: boolean;
 }
 
 export function Sidebar({
@@ -28,7 +34,11 @@ export function Sidebar({
     selectedFolder,
     onSelectFolder,
     onCreateFolder,
-    onDeleteFolder
+    onDeleteFolder,
+    onOpenBible,
+    onOpenAIChat,
+    isBibleOpen,
+    isAIChatOpen
 }: SidebarProps) {
     const { user, logout } = useAuth();
     const [search, setSearch] = useState('');
@@ -50,13 +60,6 @@ export function Sidebar({
 
     return (
         <div className="flex flex-col h-full w-[280px] bg-zinc-900 border-r border-zinc-800 shrink-0">
-            {/* Header */}
-            <div className="flex items-center h-14 px-4 border-b border-zinc-800/50">
-                <div className="flex items-center justify-center w-6 h-6 mr-3 bg-blue-600 rounded-md">
-                    <span className="text-xs font-bold text-white">W</span>
-                </div>
-                <span className="text-sm font-semibold tracking-tight text-white">WordFlow</span>
-            </div>
 
             {/* Search */}
             <div className="p-3">
@@ -118,6 +121,41 @@ export function Sidebar({
                         {folders.length === 0 && (
                             <div className="px-3 py-2 text-xs italic text-zinc-700">No folders yet</div>
                         )}
+                    </div>
+                </div>
+
+                {/* Tools Section */}
+                <div>
+                    <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                        Tools
+                    </div>
+                    <div className="space-y-0.5">
+                        <button
+                            onClick={onOpenBible}
+                            className={cn(
+                                "flex items-center w-full gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md group",
+                                isBibleOpen
+                                    ? "bg-amber-500/10 text-amber-400"
+                                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+                            )}
+                        >
+                            <BookOpen className={cn("w-4 h-4", isBibleOpen ? "text-amber-400" : "text-zinc-500 group-hover:text-zinc-300")} />
+                            <span className="truncate">Bible Reader</span>
+                            {isBibleOpen && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                        </button>
+                        <button
+                            onClick={onOpenAIChat}
+                            className={cn(
+                                "flex items-center w-full gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md group",
+                                isAIChatOpen
+                                    ? "bg-purple-500/10 text-purple-400"
+                                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+                            )}
+                        >
+                            <MessageSquareText className={cn("w-4 h-4", isAIChatOpen ? "text-purple-400" : "text-zinc-500 group-hover:text-zinc-300")} />
+                            <span className="truncate">Reformed AI</span>
+                            {isAIChatOpen && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                        </button>
                     </div>
                 </div>
             </div>

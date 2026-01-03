@@ -1,5 +1,5 @@
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama3-8b-8192';
+const MODEL = 'llama-3.3-70b-versatile'; // Using currently available stable model
 
 export const getTheologicalDefinition = async (term: string) => {
     const prompt = `You are a helpful theology assistant. Provide a concise, 2-sentence definition of the Christian theological term "${term}". Then provide 1 key Bible verse reference. Format as JSON: {"definition": "...", "verse": "Book Ch:V"}`;
@@ -18,12 +18,18 @@ export const getTheologicalDefinition = async (term: string) => {
             })
         });
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Groq API Error (Definition):', response.status, errorText);
+            throw new Error(`Groq API Error: ${response.status}`);
+        }
+
         const data = await response.json();
         const content = data.choices[0].message.content;
         return JSON.parse(content);
     } catch (error) {
         console.error('Groq AI Error:', error);
-        return { definition: "Automated definition unavailable. Please check API key.", verse: "" };
+        return { definition: "Automated definition unavailable.", verse: "" };
     }
 };
 
@@ -45,11 +51,17 @@ export const summarizeSermon = async (notesContent: string) => {
             })
         });
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Groq API Error (Summary):', response.status, errorText);
+            throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
+        }
+
         const data = await response.json();
         return data.choices[0].message.content;
     } catch (error) {
-        console.error('Groq AI Error:', error);
-        throw new Error('Failed to generate summary');
+        console.error('Groq AI Summary Error:', error);
+        throw error;
     }
 };
 

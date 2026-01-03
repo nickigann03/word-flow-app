@@ -101,6 +101,12 @@ class FirestoreService {
 
     async updateNote(noteId: string, data: any) {
         const docRef = doc(db, 'notes', noteId);
+        // Verify existence to prevent "No document to update" errors if deleted
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+            console.warn(`Attempted to update non-existent note: ${noteId}`);
+            return;
+        }
         await updateDoc(docRef, {
             ...data,
             updatedAt: serverTimestamp()

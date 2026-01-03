@@ -14,13 +14,13 @@ import { BibleReferenceExtension } from './BibleReference';
 import {
     Bold, Italic, Underline as UnderlineIcon,
     Heading1, Heading2, List, AlignLeft, AlignCenter, AlignRight,
-    Mic, MicOff, Sparkles, BookOpen, Quote, ChevronDown, Trash,
+    Sparkles, BookOpen, Quote, ChevronDown, Trash,
     Highlighter, Circle, MessageSquarePlus, Image as ImageIcon,
-    Download, FileText, Youtube, Upload
+    Download, FileText, Youtube, Upload, Radio, Square, Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import gladiaService from '@/services/gladiaService';
 import groqService from '@/services/groqService';
+import audioRecorderService from '@/services/audioRecorderService';
 import { Note } from '@/services/firestoreService';
 
 // Dynamic import for html2pdf to avoid potential SSR issues if package is hostile (though usually fine)
@@ -34,19 +34,29 @@ interface NoteEditorProps {
     onSave: (note: Note) => void;
     onExport?: (format: 'pdf' | 'md', note: Note) => void;
     onDelete?: () => void;
+    pendingInsert?: { text: string; reference: string } | null;
+    onInsertComplete?: () => void;
 }
 
-export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps) {
+export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, onInsertComplete }: NoteEditorProps) {
     const [title, setTitle] = useState(note.title);
-    const [isRecording, setIsRecording] = useState(false);
     const [aiLoading, setAiLoading] = useState(false);
-    const [interim, setInterim] = useState('');
     const [exegeteResult, setExegeteResult] = useState<{ definition: string, verse: string } | null>(null);
     const [hoverVerse, setHoverVerse] = useState<{ verse: string, text: string, x: number, y: number } | null>(null);
+
+    // Sermon Recording State
+    const [isSermonRecording, setIsSermonRecording] = useState(false);
+    const [sermonRecordingDuration, setSermonRecordingDuration] = useState(0);
+    const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Transcript / Import Dialog
     const [showImportDialog, setShowImportDialog] = useState(false);
     const [importText, setImportText] = useState('');
+
+    // Comment Dialog
+    const [showCommentDialog, setShowCommentDialog] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [commentSelection, setCommentSelection] = useState<{ from: number, to: number } | null>(null);
 
     const editorRef = useRef<HTMLDivElement>(null);
 
@@ -147,17 +157,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
         return () => clearTimeout(timeout);
     }, [title, editor?.getHTML(), note, onSave]);
 
-    useEffect(() => {
-        if (!editor) return;
-        gladiaService.onTranscript = (text) => {
-            const tr = editor.state.tr.insertText(text + ' ');
-            editor.view.dispatch(tr);
-            editor.commands.scrollIntoView();
-            setInterim('');
-        };
-        gladiaService.onInterim = setInterim;
-        return () => gladiaService.stop();
-    }, [editor]);
+
 
     useEffect(() => {
         const clear = () => setHoverVerse(null);
@@ -166,10 +166,84 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
         return () => { window.removeEventListener('scroll', clear); window.removeEventListener('click', clear); };
     }, []);
 
-    const toggleRecording = () => {
-        if (isRecording) { gladiaService.stop(); setIsRecording(false); }
-        else { gladiaService.start(); setIsRecording(true); }
+    // Handle pending verse insertions from Bible Reader or AI Chat
+    useEffect(() => {
+        if (pendingInsert && editor) {
+            editor.commands.insertContent(
+                `<blockquote>"${pendingInsert.text}" <cite>(${pendingInsert.reference})</cite></blockquote><p></p>`
+            );
+            onInsertComplete?.();
+        }
+    }, [pendingInsert, editor, onInsertComplete]);
+
+    // Format duration as MM:SS
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
+
+    // Start sermon recording
+    const handleStartSermonRecording = async () => {
+        try {
+            await audioRecorderService.startRecording();
+            setIsSermonRecording(true);
+            setSermonRecordingDuration(0);
+
+            // Start duration counter
+            recordingIntervalRef.current = setInterval(() => {
+                setSermonRecordingDuration(prev => prev + 1);
+            }, 1000);
+        } catch (error) {
+            console.error('Failed to start recording:', error);
+            alert('Failed to start recording: ' + (error as Error).message);
+        }
+    };
+
+    // Stop sermon recording and transcribe
+    const handleStopSermonRecording = async () => {
+        if (!editor) return;
+
+        setAiLoading(true);
+
+        // Stop duration counter
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+
+        try {
+            const result = await audioRecorderService.stopRecording();
+            setIsSermonRecording(false);
+
+            // Insert transcript section into the note
+            const transcriptSection = `
+                <h2>📝 Sermon Transcript</h2>
+                <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(result.duration))})</em></p>
+                <hr/>
+                <p>${result.transcript}</p>
+                <hr/>
+            `;
+
+            editor.commands.insertContent(transcriptSection);
+
+            // Optionally generate summary
+            if (result.transcript.length > 100) {
+                const summary = await groqService.summarizeSermon(result.transcript);
+                editor.commands.insertContent(
+                    `<blockquote><strong>📋 AI Summary:</strong><br/>${summary}</blockquote><p></p>`
+                );
+            }
+        } catch (error) {
+            console.error('Recording/transcription failed:', error);
+            alert('Recording failed: ' + (error as Error).message);
+            setIsSermonRecording(false);
+        }
+
+        setAiLoading(false);
+    };
+
+
 
     const handleAIAnalyze = async () => {
         if (!editor) return;
@@ -233,14 +307,28 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
         link.click();
     };
 
-    const addComment = () => {
-        if (editor?.state.selection.empty) {
+    const openCommentDialog = () => {
+        if (!editor) return;
+        if (editor.state.selection.empty) {
             alert("Please select text to add a comment.");
             return;
         }
-        const comment = prompt("Add comment:");
-        if (comment && editor) { editor.chain().focus().setComment(comment).run(); }
-    }
+        setCommentSelection({ from: editor.state.selection.from, to: editor.state.selection.to });
+        setCommentText('');
+        setShowCommentDialog(true);
+    };
+
+    const handleSaveComment = () => {
+        if (editor && commentSelection && commentText) {
+            editor.chain()
+                .setTextSelection(commentSelection)
+                .setComment(commentText)
+                .run();
+        }
+        setShowCommentDialog(false);
+        setCommentText('');
+        setCommentSelection(null);
+    };
 
     const addImage = () => {
         const url = prompt("Image URL:");
@@ -252,17 +340,42 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
             {/* Toolbar */}
             <div className="h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950/80 backdrop-blur sticky top-0 z-10 shrink-0">
                 <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-zinc-500 tracking-widest uppercase">WordFlow</span>
-                    {isRecording && <span className="flex h-2 w-2 relative ml-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>}
-                    {aiLoading && <span className="ml-2 text-xs text-amber-500 animate-pulse font-mono">AI Processing...</span>}
+                    {isSermonRecording && (
+                        <span className="flex items-center gap-2 px-2 py-1 bg-red-500/10 rounded-full">
+                            <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>
+                            <Clock className="w-3 h-3 text-red-400" />
+                            <span className="text-xs font-mono text-red-400">{formatDuration(sermonRecordingDuration)}</span>
+                        </span>
+                    )}
+                    {aiLoading && <span className="text-xs text-amber-500 animate-pulse font-mono">AI Processing...</span>}
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Actions */}
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
                     <button onClick={handleExportPDF} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
+
+                    {/* Sermon Recording Button */}
+                    {isSermonRecording ? (
+                        <button
+                            onClick={handleStopSermonRecording}
+                            disabled={aiLoading}
+                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-full bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-500 transition-all"
+                        >
+                            <Square className="w-3 h-3" /> Stop Recording
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleStartSermonRecording}
+                            disabled={aiLoading}
+                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-full bg-gradient-to-r from-red-600 to-orange-600 text-white hover:from-red-500 hover:to-orange-500 transition-all disabled:opacity-50"
+                            title="Record sermon and transcribe"
+                        >
+                            <Radio className="w-3.5 h-3.5" /> Record Sermon
+                        </button>
+                    )}
+
                     <button onClick={handleAIAnalyze} disabled={aiLoading} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 rounded-full transition-colors"><Sparkles className={cn("w-3.5 h-3.5", aiLoading && "animate-spin")} /> Analyze</button>
-                    <button onClick={toggleRecording} className={cn("flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-full transition-all", isRecording ? "bg-red-500 text-white shadow-lg shadow-red-500/20" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")}>{isRecording ? 'Stop' : 'Dictate'}</button>
                     {onDelete && <><div className="h-4 w-px bg-zinc-800 mx-1" /><button onClick={onDelete} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors" title="Delete Note"><Trash className="w-4 h-4" /></button></>}
                 </div>
             </div>
@@ -300,7 +413,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
                         <div className="flex items-center gap-0.5 pl-1">
                             <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('highlight') && "text-amber-400")} title="Highlight"><Highlighter className="w-4 h-4" /></button>
                             <button onClick={() => editor.chain().focus().toggleCircle().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('circle') && "text-red-400")} title="Circle Word"><Circle className="w-4 h-4" /></button>
-                            <button onClick={addComment} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('comment') && "text-blue-400")} title="Add Comment"><MessageSquarePlus className="w-4 h-4" /></button>
+                            <button onClick={openCommentDialog} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('comment') && "text-blue-400")} title="Add Comment"><MessageSquarePlus className="w-4 h-4" /></button>
                             <button onClick={handleExegete} className="ml-1 p-1.5 hover:bg-zinc-800 rounded flex items-center gap-1 text-xs font-semibold text-purple-400 bg-purple-500/10"><BookOpen className="w-3 h-3" /> Exegete</button>
                         </div>
                     </BubbleMenu>}
@@ -315,7 +428,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
                     </FloatingMenu>}
 
                     <EditorContent editor={editor} />
-                    {interim && <div className="mt-4 p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 text-zinc-400 italic">{interim}...</div>}
                 </div>
             </div>
 
@@ -371,6 +483,26 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: NoteEditorProps
                         <div className="flex justify-end gap-2 mt-4">
                             <button onClick={() => setShowImportDialog(false)} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
                             <button onClick={handleImportProcess} disabled={!importText} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-50">Summarize & Import</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Comment Dialog */}
+            {showCommentDialog && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in fade-in zoom-in-95">
+                        <h3 className="text-lg font-bold mb-4">Add Comment</h3>
+                        <textarea
+                            value={commentText}
+                            onChange={e => setCommentText(e.target.value)}
+                            className="w-full h-24 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 mb-4"
+                            placeholder="Type your comment..."
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowCommentDialog(false)} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
+                            <button onClick={handleSaveComment} disabled={!commentText} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-50">Save Comment</button>
                         </div>
                     </div>
                 </div>

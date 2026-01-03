@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 export class GladiaService {
     private socket: WebSocket | null = null;
     public isConnected = false;
@@ -5,8 +7,12 @@ export class GladiaService {
     public onInterim: ((text: string) => void) | null = null;
     public onError: ((error: any) => void) | null = null;
     private mediaRecorder: MediaRecorder | null = null;
+    private retries = 0;
 
-    start() {
+    async start() {
+        // Ensure clean state before starting
+        this.stop();
+
         const apiKey = process.env.NEXT_PUBLIC_GLADIA_API_KEY;
         if (!apiKey) {
             console.error("Gladia: Missing API Key");
@@ -15,40 +21,72 @@ export class GladiaService {
         }
 
         try {
-            console.log("Gladia: Connecting...");
+            console.log("Gladia: Requesting Mic Access...");
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log("Gladia: Mic Access Granted. Tracks:", stream.getAudioTracks().length);
+
+            // Get correct sample rate from the stream
+            const track = stream.getAudioTracks()[0];
+            const sampleRate = track.getSettings().sampleRate || 48000;
+            console.log("Gladia: Detected Sample Rate:", sampleRate);
+
+            // Initialize MediaRecorder
+            let options: MediaRecorderOptions = {};
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                options = { mimeType: 'audio/webm;codecs=opus' };
+            }
+            console.log("Gladia: Creating MediaRecorder with options:", options);
+            this.mediaRecorder = new MediaRecorder(stream, options);
+
+            // Setup audio data handling
+            let chunkCount = 0;
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0 && this.socket && this.socket.readyState === WebSocket.OPEN) {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(event.data);
+                    reader.onloadend = () => {
+                        const base64Audio = (reader.result as string).split(',')[1];
+                        chunkCount++;
+                        // Log every 50th chunk to verify flow without spamming
+                        if (chunkCount % 50 === 0) console.log(`Gladia: Sending chunk #${chunkCount} (${base64Audio.length} bytes)`);
+                        this.socket?.send(JSON.stringify({ frames: base64Audio }));
+                    };
+                }
+            };
+
+            // Connect to WebSocket AFTER microphone is ready
+            console.log("Gladia: Connecting Socket...");
             this.socket = new WebSocket('wss://api.gladia.io/audio/text/audio-transcription');
 
             this.socket.onopen = () => {
                 console.log("Gladia: Connected");
                 this.isConnected = true;
+                this.retries = 0;
 
                 const configuration = {
                     x_gladia_key: apiKey,
                     language_behaviour: 'automatic single language',
-                    // encoding removed to allow auto-detection or raw stream
+                    sample_rate: sampleRate, // Use real sample rate
+                    frames_format: 'base64',
                 };
+                console.log("Gladia: Sending config", configuration);
                 this.socket?.send(JSON.stringify(configuration));
 
-                this.startMicrophone();
+                // Start recording
+                this.mediaRecorder?.start(500); // 500ms chunks
+                console.log("Gladia: MediaRecorder started");
             };
 
             this.socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.error) {
+
+                if (data.type === 'transcript' || data.type === 'final') {
+                    console.log("Gladia Rx:", data.type, data.transcription);
+                    if (this.onTranscript) this.onTranscript(data.transcription);
+                } else if (data.type === 'partial' && this.onInterim) {
+                    this.onInterim(data.transcription);
+                } else if (data.error) {
                     console.error("Gladia API Error:", data.error);
-                }
-                if (data.type === 'transcript') {
-                    console.log("Gladia Rx:", data.type, data.transcription, data.confidence);
-                    if (data.transcription && this.onTranscript) {
-                        // Use confidence or final flag if available (V1 checks confidence)
-                        if ((data.confidence && data.confidence > 0.5) || (data.type === 'final')) {
-                            this.onTranscript(data.transcription);
-                        } else if (this.onInterim) {
-                            this.onInterim(data.transcription);
-                        }
-                    }
-                } else {
-                    console.log("Gladia Msg:", data);
                 }
             };
 
@@ -60,46 +98,34 @@ export class GladiaService {
             this.socket.onclose = (ev) => {
                 console.log("Gladia: Closed", ev.code, ev.reason);
                 this.isConnected = false;
-            }
 
-        } catch (err) {
-            console.error("Gladia Init Error:", err);
-            if (this.onError) this.onError(err);
-        }
-    }
-
-    async startMicrophone() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Detect mimeType if supported
-            let options = {};
-            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-                options = { mimeType: 'audio/webm;codecs=opus' };
-            }
-            this.mediaRecorder = new MediaRecorder(stream, options);
-
-            this.mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0 && this.socket && this.socket.readyState === WebSocket.OPEN) {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(event.data);
-                    reader.onloadend = () => {
-                        const base64Audio = (reader.result as string).split(',')[1];
-                        this.socket?.send(JSON.stringify({ frames: base64Audio }));
-                    };
+                if (ev.code === 1005) {
+                    console.log("Gladia: Attempting reconnect (1005)...");
+                    setTimeout(() => { if (!this.isConnected) this.start(); }, 1000);
+                } else if (ev.code === 4129) {
+                    if (this.retries < 1) {
+                        console.warn("Gladia: Max sessions 4129. Retry (1/1)...");
+                        this.retries++;
+                        setTimeout(() => { if (!this.isConnected) this.start(); }, 3000);
+                    } else {
+                        console.error("Gladia: Max sessions reached (Fatal).");
+                        if (this.onError) this.onError("Error 4129: Max sessions reached");
+                    }
                 }
-            };
+            }
 
-            this.mediaRecorder.start(500); // 500ms chunks
         } catch (err) {
             console.error("Gladia Mic Error:", err);
-            if (this.onError) this.onError("Microphone access denied");
+            if (this.onError) this.onError("Microphone access denied: " + (err as any).message);
         }
     }
 
     stop() {
+        console.log("Gladia: Stopping service...");
         if (this.mediaRecorder) {
-            this.mediaRecorder.stop();
+            if (this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
             this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            console.log("Gladia: Recorder stopped");
         }
         if (this.socket) {
             this.socket.close();

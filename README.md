@@ -7,7 +7,7 @@ Word Flow is a powerfully simple, Notion-style editor designed specifically for 
 ## ✨ Key Features
 
 ### 📝 Advanced Rich Text Editor
-*   **Destraction-Free UI**: Clean, minimalist interface using the **Outfit** font for optimal readability.
+*   **Distraction-Free UI**: Clean, minimalist interface using the **Outfit** font for optimal readability.
 *   **Notion-Style Formatting**: Supports H1, H2, Lists, Blockquotes, and more via a floating menu.
 *   **Custom Fonts**: Adjust font sizes (S, M, L, XL) and colors (Red, Blue, Yellow) for emphasis.
 *   **Exegesis Tools**:
@@ -20,9 +20,28 @@ Word Flow is a powerfully simple, Notion-style editor designed specifically for 
 *   **Bible Verse Hover**: Type any reference (e.g., `John 3:16`, `Gen 1:1`). Hover over it to read the text instantly. Click **"Insert"** to add it to your notes.
 *   **AI Analysis**: Click **"Analyze Note"** to generate a concise summary and key takeaways of your sermon/notes using Groq AI.
 
-### 🎙️ Live Transcription & Dictation
-*   **Live Dictation**: Click **"Dictate"** to transcribe your voice in real-time (powered by Gladia).
-*   **Transcript Import**: Click the **Upload Icon** to paste a sermon transcript or YouTube summary. The AI will automatically summarize and format it for you.
+### 📖 Bible Reader (Split Screen)
+*   **Integrated Bible Panel**: Click **"Bible Reader"** in the sidebar to open a split-screen Bible reader alongside your notes.
+*   **Multiple Translations**: Choose from KJV, WEB, ASV, BBE, Darby, and YLT translations.
+*   **Easy Navigation**: Browse by book and chapter with quick navigation arrows.
+*   **Word Meaning Lookup**: Click any word to see its Greek/Hebrew origin and meaning.
+*   **Verse Insertion**: Click "Insert" on any verse to add it as a blockquote in your notes.
+*   **Smart Search**: Search for Bible verses by topic or keyword using AI-powered search.
+
+### 💬 Reformed AI Chat Agent
+*   **Theological AI Assistant**: Click **"Reformed AI"** in the sidebar to chat with an evangelical Reformed AI.
+*   **Scripture-Based Answers**: All responses are grounded in Scripture with specific verse references.
+*   **Reformed Tradition**: The AI is rooted in the historic Reformed tradition (5 Solas, TULIP, Covenant Theology).
+*   **Word Definitions**: Double-click any word in the chat to get its theological definition.
+*   **Verse Linking**: Bible references in responses are clickable and can be inserted into your notes.
+*   **Quick Questions**: Pre-made theological questions to get you started.
+
+### 🎙️ Sermon Recording & Transcription
+*   **Full Sermon Recording**: Click **"Record Sermon"** to record an entire sermon locally.
+*   **Whisper Transcription**: After recording, the audio is transcribed using Groq's Whisper API.
+*   **Automatic Formatting**: The transcript is inserted as a formatted section in your notes with timestamp and duration.
+*   **AI Summary**: Long transcripts automatically receive an AI-generated summary.
+*   **Transcript Import**: Click the **Upload Icon** to paste a sermon transcript or YouTube summary for AI formatting.
 
 ### 📂 Organization & Sync
 *   **Cloud Sync**: All notes are auto-saved to Firebase Firestore.
@@ -36,7 +55,6 @@ Word Flow is a powerfully simple, Notion-style editor designed specifically for 
 *   Node.js 18+
 *   Firebase Project (Firestore, Auth, Storage enabled)
 *   Groq API Key
-*   Gladia API Key
 
 ### Installation
 
@@ -61,8 +79,11 @@ Word Flow is a powerfully simple, Notion-style editor designed specifically for 
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_id
     NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
     
-    NEXT_PUBLIC_GLADIA_API_KEY=your_gladia_key
     NEXT_PUBLIC_GROQ_API_KEY=your_groq_key
+    
+    # Optional: For ESV, NIV, NLT, NASB, NKJV Bible versions
+    NEXT_PUBLIC_ESV_API_KEY=your_esv_key          # Get free at https://api.esv.org
+    NEXT_PUBLIC_API_BIBLE_KEY=your_api_bible_key  # Get free at https://scripture.api.bible
     ```
 
 4.  **Run Locally**:
