@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-Word Flow is a **Next.js 16 (App Router)** application built with a **Serverless** architecture using Firebase and AI-powered services.
+WordFlow is a **Next.js 15 (App Router)** application built with a **Serverless** architecture using Firebase and AI-powered services.
 
 ---
 
@@ -16,6 +16,7 @@ flowchart TB
         BibleReader["BibleReaderPanel.tsx"]
         AIChat["ReformedAIChat.tsx"]
         Sidebar["Sidebar.tsx"]
+        Toast["Toast.tsx"]
     end
 
     subgraph Firebase["☁️ Firebase Services"]
@@ -40,6 +41,7 @@ flowchart TB
     Dashboard --> BibleReader
     Dashboard --> AIChat
     Dashboard --> Sidebar
+    Dashboard --> Toast
 
     NoteEditor -->|"Auth State"| Auth
     NoteEditor -->|"Save Notes"| Firestore
@@ -53,6 +55,7 @@ flowchart TB
     BibleReader -->|"Word Meanings"| Llama
 
     AIChat -->|"Chat Completions"| Llama
+    AIChat -->|"Note Context"| NoteEditor
     AIChat -->|"Bible References"| BibleAPI
 ```
 
@@ -64,22 +67,27 @@ flowchart TB
 sequenceDiagram
     participant User
     participant Editor as NoteEditor
+    participant Toast as Toast System
     participant Recorder as AudioRecorderService
     participant Groq as Groq API
     participant Firebase as Firestore
 
     Note over User,Firebase: Sermon Recording Flow
     User->>Editor: Click "Record Sermon"
+    Editor->>Toast: Show "Recording Started" 🔴
     Editor->>Recorder: startRecording()
     Recorder->>Recorder: MediaRecorder captures audio
     User->>Editor: Click "Stop Recording"
+    Editor->>Toast: Show "Processing Recording" ⏳
     Editor->>Recorder: stopRecording()
     Recorder->>Groq: Send audio blob (Whisper API)
     Groq-->>Recorder: Return transcript text
     Recorder-->>Editor: Return transcript
     Editor->>Editor: Insert formatted transcript
+    Editor->>Toast: Show "Generating Summary" ⏳
     Editor->>Groq: Generate AI summary
     Groq-->>Editor: Return summary
+    Editor->>Toast: Show "Transcription Complete" ✅
     Editor->>Firebase: Auto-save note
 ```
 
@@ -99,6 +107,7 @@ graph LR
         Sidebar
         BibleReader["BibleReaderPanel"]
         AIChat["ReformedAIChat"]
+        Toast["Toast System"]
         Extensions["EditorExtensions"]
         BibleRef["BibleReference"]
     end
@@ -113,6 +122,7 @@ graph LR
 
     subgraph Context["🔄 Context"]
         AuthContext["AuthContext"]
+        ToastContext["ToastContext"]
     end
 
     App --> Dashboard
@@ -126,12 +136,14 @@ graph LR
     NoteEditor --> GroqService
     NoteEditor --> AudioService
     NoteEditor --> FirestoreService
+    NoteEditor --> Toast
 
     BibleReader --> BibleService
     AIChat --> ReformedAI
     AIChat --> BibleService
 
     Dashboard --> AuthContext
+    Dashboard --> ToastContext
 ```
 
 ---
@@ -153,32 +165,59 @@ The core rich-text editor built with Tiptap/ProseMirror with Notion-like feature
 | **Tab Indentation** | Tab/Shift+Tab for indent/outdent in paragraphs and lists |
 | **Text Alignment** | Left, Center, Right, and **Justify** options |
 | **Subscript/Superscript** | For footnotes and mathematical notation |
-| **Auto-Save** | Debounced (2s) save to Firestore |
+| **Auto-Save** | Debounced (1s) save to Firestore |
 | **Bible References** | Custom extension with regex detection + API lookup |
 | **Image Handling** | Paste detection → Firebase Storage upload |
 | **Sermon Recording** | MediaRecorder API → Groq Whisper transcription |
 | **AI Analysis** | Groq Llama 3.3 for sermon summarization |
+| **Toast Notifications** | Modern popup system for all status updates |
 
-### 2. BibleReaderPanel (`src/components/BibleReaderPanel.tsx`)
+### 2. Sidebar (`src/components/Sidebar.tsx`)
+Collapsible navigation sidebar with tools access.
+
+| Feature | Implementation |
+|---------|---------------|
+| **Collapse Toggle** | Shrinks to 60px icon-only view |
+| **Folder Navigation** | Create, delete, select folders |
+| **Tool Buttons** | Quick access to Bible Reader and AI Chat |
+| **User Profile** | Display user info with logout option |
+
+### 3. BibleReaderPanel (`src/components/BibleReaderPanel.tsx`)
 Split-screen Bible reader with multiple version support.
 
 | Feature | Implementation |
 |---------|---------------|
 | **Versions** | ESV, NIV, NLT, NASB, NKJV, KJV, WEB, ASV, BBE, DARBY, YLT |
 | **Navigation** | Book/chapter browser with prev/next arrows |
+| **Book Search** | Type-to-filter book picker (e.g., "Titus") |
 | **Word Meanings** | Click word → AI-powered Greek/Hebrew lookup |
 | **Verse Insert** | Click verse → Insert formatted blockquote in editor |
-| **Search** | AI-powered topical verse search |
+| **AI Search** | AI-powered topical verse search |
+| **Expand Mode** | Toggle between 400px and 600px width |
 
-### 3. ReformedAIChat (`src/components/ReformedAIChat.tsx`)
+### 4. ReformedAIChat (`src/components/ReformedAIChat.tsx`)
 Theological AI assistant with Reformed evangelical perspective.
 
 | Feature | Implementation |
 |---------|---------------|
 | **Persona** | Reformed theology (5 Solas, TULIP, Covenant Theology) |
+| **Note Context** | Receives current note content for contextual responses |
+| **Context Indicator** | Shows "Note Context Active" badge when viewing a note |
+| **Smart Questions** | Different quick questions based on context |
 | **Bible References** | Automatic Scripture citations in responses |
 | **Word Definitions** | Double-click word for theological definition |
 | **Verse Linking** | Clickable verse refs → Insert into notes |
+
+### 5. Toast (`src/components/Toast.tsx`)
+Modern notification system for status updates.
+
+| Feature | Implementation |
+|---------|---------------|
+| **Types** | success, error, info, loading, bible, recording, saving, upload |
+| **Auto-dismiss** | Configurable duration (default 4s, loading = persistent) |
+| **Animations** | Slide-in from right with blur backdrop |
+| **Actions** | Optional action buttons in toasts |
+| **Updates** | Can update loading toasts to success/error |
 
 ---
 
@@ -217,9 +256,11 @@ flowchart LR
 ```mermaid
 flowchart TD
     Input["User Question"]
+    NoteContext["Note Content (optional)"]
     
     Input --> System["System Prompt
     (Reformed Theology Framework)"]
+    NoteContext --> System
     
     System --> Context["Add Conversation History"]
     Context --> Groq["Groq API (Llama 3.3 70B)"]
@@ -254,6 +295,21 @@ interface Folder {
   userId: string;
   title: string;
   createdAt: Timestamp;
+}
+```
+
+### Toast Interface
+```typescript
+interface Toast {
+  id: string;
+  title: string;
+  message?: string;
+  type: 'success' | 'error' | 'info' | 'loading' | 'bible' | 'recording' | 'saving' | 'upload';
+  duration?: number;  // 0 = persistent
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 ```
 
@@ -335,3 +391,20 @@ npm run build
 # Deploy to Vercel
 npx vercel --prod
 ```
+
+---
+
+## Changelog (Recent Updates)
+
+### v1.2.0 - January 2026
+- ✅ **Collapsible Sidebar** - Toggle to icon-only mode
+- ✅ **AI Note Context** - Reformed AI can analyze current note
+- ✅ **Toast Notifications** - Modern popup system for status updates
+- ✅ **Bible Book Search** - Filter books by typing
+- ✅ **Bible Reader Scrolling** - Fixed scroll issues
+
+### v1.1.0 - December 2025
+- ✅ **Notion-like Features** - Slash commands, tables, task lists, callouts
+- ✅ **Code Blocks** - Syntax highlighting with lowlight
+- ✅ **Text Justify** - Added justify alignment option
+- ✅ **Tab Indentation** - Tab/Shift+Tab for indentation

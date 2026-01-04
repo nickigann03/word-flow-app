@@ -9,9 +9,11 @@ import firestoreService, { Folder, Note } from '@/services/firestoreService';
 import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getAllTemplates } from '@/data/sermonTemplates';
+import { useToast } from './Toast';
 
 export function Dashboard() {
     const { user } = useAuth();
+    const toast = useToast();
     const [folders, setFolders] = useState<Folder[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
     const [selectedFolder, setSelectedFolder] = useState('recent');
@@ -47,19 +49,29 @@ export function Dashboard() {
 
     async function loadFolders() {
         if (!user) return;
-        const data = await firestoreService.getFolders(user.uid);
-        setFolders(data);
+        try {
+            const data = await firestoreService.getFolders(user.uid);
+            setFolders(data);
+        } catch (error) {
+            console.error('Failed to load folders:', error);
+            toast.error('Sync Error', 'Failed to load folders. Please check your connection.');
+        }
     }
 
     async function loadNotes(folderId: string) {
         if (!user) return;
-        let data;
-        if (folderId === 'recent' || folderId === 'all') {
-            data = await firestoreService.getNotes(user.uid);
-        } else {
-            data = await firestoreService.getNotesByFolder(folderId);
+        try {
+            let data;
+            if (folderId === 'recent' || folderId === 'all') {
+                data = await firestoreService.getNotes(user.uid);
+            } else {
+                data = await firestoreService.getNotesByFolder(folderId);
+            }
+            setNotes(data);
+        } catch (error) {
+            console.error('Failed to load notes:', error);
+            toast.error('Sync Error', 'Failed to load notes. Please check your connection.');
         }
-        setNotes(data);
     }
 
     const handleSelectFolder = (id: string) => {
@@ -70,38 +82,64 @@ export function Dashboard() {
     };
 
     const handleCreateNote = async (templateContent = '') => {
-        if (!user) return;
-        const newNote = {
-            title: 'Untitled Note',
-            content: templateContent,
-            folderId: selectedFolder === 'recent' || selectedFolder === 'all' ? null : selectedFolder,
-            tags: []
-        };
-        const id = await firestoreService.createNote(user.uid, newNote);
-        const note = { id, ...newNote, userId: user.uid, tags: [] };
+        if (!user) {
+            toast.error('Authentication Required', 'Please log in to create notes.');
+            return;
+        }
 
-        setNotes([note, ...notes]);
-        setSelectedNote(note);
-        setView('editor');
+        const toastId = toast.loading('Creating Note', 'Setting up new document...');
+        try {
+            const newNote = {
+                title: 'Untitled Note',
+                content: templateContent,
+                folderId: selectedFolder === 'recent' || selectedFolder === 'all' ? null : selectedFolder,
+                tags: []
+            };
+            const id = await firestoreService.createNote(user.uid, newNote);
+            const note = { id, ...newNote, userId: user.uid, tags: [] };
+
+            setNotes([note, ...notes]);
+            setSelectedNote(note);
+            setView('editor');
+            toast.updateToast(toastId, { title: 'Note Created', message: 'Started a new note', type: 'success' });
+        } catch (error) {
+            console.error('Failed to create note:', error);
+            toast.updateToast(toastId, { title: 'Creation Failed', message: 'Could not create new note', type: 'error' });
+        }
     };
 
     const handleSaveNote = async (updated: Note) => {
         if (!updated.id) return;
-        await firestoreService.updateNote(updated.id, {
-            title: updated.title,
-            content: updated.content
-        });
-        setNotes(notes.map(n => n.id === updated.id ? updated : n));
-        setSelectedNote(updated); // Update selected note for AI context
-        setCurrentNoteContent(updated.content || '');
+        try {
+            await firestoreService.updateNote(updated.id, {
+                title: updated.title,
+                content: updated.content
+            });
+            setNotes(prevNotes => prevNotes.map(n => n.id === updated.id ? updated : n));
+            // Don't show success toast on every auto-save to avoid spam
+            // Instead, we rely on the absence of error
+            setSelectedNote(updated);
+            setCurrentNoteContent(updated.content || '');
+        } catch (error) {
+            console.error('Failed to save note:', error);
+            toast.error('Save Failed', 'Your changes could not be saved');
+        }
     };
 
     const handleDeleteNote = async (noteId: string) => {
         if (!confirm("Are you sure you want to delete this note?")) return;
-        await firestoreService.deleteNote(noteId);
-        setNotes(notes.filter(n => n.id !== noteId));
-        setSelectedNote(null);
-        setView('list');
+
+        const toastId = toast.loading('Deleting Note', 'Removing note permanently...');
+        try {
+            await firestoreService.deleteNote(noteId);
+            setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+            setSelectedNote(null);
+            setView('list');
+            toast.updateToast(toastId, { title: 'Note Deleted', message: 'Note has been removed', type: 'success' });
+        } catch (error) {
+            console.error('Failed to delete note:', error);
+            toast.updateToast(toastId, { title: 'Delete Failed', message: 'Could not delete the note', type: 'error' });
+        }
     };
 
     // Handler for inserting verses from Bible Reader or AI Chat
@@ -128,9 +166,15 @@ export function Dashboard() {
                 }}
                 onDeleteFolder={async (id) => {
                     if (confirm("Delete this folder? Notes inside might be lost.")) {
-                        await firestoreService.deleteFolder(id);
-                        loadFolders();
-                        if (selectedFolder === id) setSelectedFolder('recent');
+                        const toastId = toast.loading('Deleting Folder...');
+                        try {
+                            await firestoreService.deleteFolder(id);
+                            loadFolders();
+                            if (selectedFolder === id) setSelectedFolder('recent');
+                            toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
+                        } catch (e) {
+                            toast.updateToast(toastId, { title: 'Failed to delete folder', type: 'error' });
+                        }
                     }
                 }}
                 onOpenBible={handleToggleBible}

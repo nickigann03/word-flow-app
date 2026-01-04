@@ -44,6 +44,7 @@ import { Note } from '@/services/firestoreService';
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from './Toast';
 
 const lowlight = createLowlight(common);
 
@@ -217,6 +218,9 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     // Transcript / Import Dialog
     const [showImportDialog, setShowImportDialog] = useState(false);
     const [importText, setImportText] = useState('');
+
+    // Toast notifications
+    const toast = useToast();
 
     // Comment Dialog
     const [showCommentDialog, setShowCommentDialog] = useState(false);
@@ -399,10 +403,11 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         );
                         view.dispatch(transaction);
                         setAiLoading(false);
+                        toast.success('Image Uploaded', 'Image added to your note');
                     }).catch(e => {
                         console.error('Upload failed', e);
                         setAiLoading(false);
-                        alert("Image upload failed");
+                        toast.error('Upload Failed', 'Could not upload image');
                     });
 
                     return true;
@@ -482,13 +487,14 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             await audioRecorderService.startRecording();
             setIsSermonRecording(true);
             setSermonRecordingDuration(0);
+            toast.addToast({ title: 'Recording Started', message: 'Sermon recording in progress...', type: 'recording', duration: 3000 });
 
             recordingIntervalRef.current = setInterval(() => {
                 setSermonRecordingDuration(prev => prev + 1);
             }, 1000);
         } catch (error) {
             console.error('Failed to start recording:', error);
-            alert('Failed to start recording: ' + (error as Error).message);
+            toast.error('Recording Failed', (error as Error).message);
         }
     };
 
@@ -496,6 +502,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const handleStopSermonRecording = async () => {
         if (!editor) return;
 
+        const loadingToast = toast.loading('Processing Recording', 'Transcribing audio...');
         setAiLoading(true);
 
         if (recordingIntervalRef.current) {
@@ -518,14 +525,16 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             editor.commands.insertContent(transcriptSection);
 
             if (result.transcript.length > 100) {
+                toast.updateToast(loadingToast, { title: 'Generating Summary', message: 'AI is summarizing your sermon...' });
                 const summary = await groqService.summarizeSermon(result.transcript);
                 editor.commands.insertContent(
                     `<blockquote><strong>📋 AI Summary:</strong><br/>${summary}</blockquote><p></p>`
                 );
             }
+            toast.updateToast(loadingToast, { title: 'Transcription Complete', message: 'Your sermon has been transcribed', type: 'success' });
         } catch (error) {
             console.error('Recording/transcription failed:', error);
-            alert('Recording failed: ' + (error as Error).message);
+            toast.updateToast(loadingToast, { title: 'Transcription Failed', message: (error as Error).message, type: 'error' });
             setIsSermonRecording(false);
         }
 
@@ -534,12 +543,17 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
     const handleAIAnalyze = async () => {
         if (!editor) return;
+        const loadingToast = toast.loading('Analyzing Note', 'AI is analyzing your content...');
         setAiLoading(true);
         try {
             const text = editor.getText();
             const summary = await groqService.summarizeSermon(text);
             editor.commands.insertContent(`<blockquote><strong>AI Analysis:</strong><br/>${summary}</blockquote><p></p>`);
-        } catch (e) { console.error(e); }
+            toast.updateToast(loadingToast, { title: 'Analysis Complete', message: 'AI summary added to your note', type: 'success' });
+        } catch (e) {
+            console.error(e);
+            toast.updateToast(loadingToast, { title: 'Analysis Failed', message: 'Could not analyze note', type: 'error' });
+        }
         setAiLoading(false);
     };
 
@@ -547,16 +561,22 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         if (!editor) return;
         const selection = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to);
         if (!selection) return;
+        const loadingToast = toast.loading('Looking Up', `Researching "${selection.substring(0, 20)}..."`);
         setAiLoading(true);
         try {
             const res = await groqService.getTheologicalDefinition(selection);
             setExegeteResult(res);
-        } catch (e) { console.error(e); }
+            toast.removeToast(loadingToast);
+        } catch (e) {
+            console.error(e);
+            toast.updateToast(loadingToast, { title: 'Lookup Failed', type: 'error' });
+        }
         setAiLoading(false);
     };
 
     const handleImportProcess = async () => {
         if (!importText || !editor) return;
+        const loadingToast = toast.loading('Processing Import', 'Formatting and analyzing transcript...');
         setAiLoading(true);
         setShowImportDialog(false);
         try {
@@ -564,7 +584,11 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             const summary = await groqService.summarizeSermon(importText);
             editor.commands.insertContent(`<blockquote><strong>Transcript Summary:</strong><br/>${summary}</blockquote><p></p>`);
             setImportText('');
-        } catch (e) { console.error(e); }
+            toast.updateToast(loadingToast, { title: 'Import Complete', message: 'Transcript imported with AI summary', type: 'success' });
+        } catch (e) {
+            console.error(e);
+            toast.updateToast(loadingToast, { title: 'Import Failed', type: 'error' });
+        }
         setAiLoading(false);
     };
 
