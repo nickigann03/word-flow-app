@@ -21,9 +21,13 @@ export function Dashboard() {
     // Panel states
     const [isBibleOpen, setIsBibleOpen] = useState(false);
     const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     // Reference to the NoteEditor for inserting content
     const [pendingInsert, setPendingInsert] = useState<{ text: string; reference: string } | null>(null);
+
+    // Track current note content for AI context
+    const [currentNoteContent, setCurrentNoteContent] = useState<string>('');
 
     useEffect(() => {
         if (user?.uid) {
@@ -31,6 +35,15 @@ export function Dashboard() {
             loadNotes('recent');
         }
     }, [user]);
+
+    // Update current note content when note changes
+    useEffect(() => {
+        if (selectedNote) {
+            setCurrentNoteContent(selectedNote.content || '');
+        } else {
+            setCurrentNoteContent('');
+        }
+    }, [selectedNote]);
 
     async function loadFolders() {
         if (!user) return;
@@ -79,6 +92,8 @@ export function Dashboard() {
             content: updated.content
         });
         setNotes(notes.map(n => n.id === updated.id ? updated : n));
+        setSelectedNote(updated); // Update selected note for AI context
+        setCurrentNoteContent(updated.content || '');
     };
 
     const handleDeleteNote = async (noteId: string) => {
@@ -122,6 +137,8 @@ export function Dashboard() {
                 onOpenAIChat={handleToggleAIChat}
                 isBibleOpen={isBibleOpen}
                 isAIChatOpen={isAIChatOpen}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
             />
 
             {/* Main Content Area */}
@@ -220,6 +237,8 @@ export function Dashboard() {
                 isOpen={isAIChatOpen}
                 onClose={() => setIsAIChatOpen(false)}
                 onInsertVerse={handleInsertVerse}
+                noteContext={currentNoteContent}
+                noteTitle={selectedNote?.title}
             />
         </div>
     );

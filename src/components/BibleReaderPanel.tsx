@@ -27,6 +27,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
     const [searchResults, setSearchResults] = useState<BibleVerse[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [bookFilter, setBookFilter] = useState(''); // For filtering books in the picker
 
     // Content state
     const [chapterContent, setChapterContent] = useState<BibleVerse | null>(null);
@@ -140,7 +141,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
 
     return (
         <div className={cn(
-            "flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-all duration-300",
+            "flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-all duration-300 overflow-hidden",
             isExpanded ? "w-[600px]" : "w-[400px]"
         )}>
             {/* Header */}
@@ -186,31 +187,49 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
 
                     {showBookPicker && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 max-h-80 overflow-hidden">
-                            <div className="p-2 border-b border-zinc-800">
+                            <div className="p-2 border-b border-zinc-800 sticky top-0 bg-zinc-900 z-10">
                                 <input
                                     type="text"
-                                    placeholder="Search books..."
+                                    value={bookFilter}
+                                    onChange={(e) => setBookFilter(e.target.value)}
+                                    placeholder="Search books... (e.g., Titus)"
                                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-md text-sm focus:outline-none focus:border-amber-500"
+                                    autoFocus
                                 />
                             </div>
                             <div className="max-h-60 overflow-y-auto custom-scrollbar p-2">
-                                {BIBLE_BOOKS.map(book => (
-                                    <div key={book.id} className="mb-1">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedBook(book);
-                                                setSelectedChapter(1);
-                                                setShowBookPicker(false);
-                                            }}
-                                            className={cn(
-                                                "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors",
-                                                book.id === selectedBook.id && "bg-amber-500/10 text-amber-400"
-                                            )}
-                                        >
-                                            {book.name}
-                                        </button>
-                                    </div>
-                                ))}
+                                {BIBLE_BOOKS
+                                    .filter(book =>
+                                        book.name.toLowerCase().includes(bookFilter.toLowerCase()) ||
+                                        book.id.toLowerCase().includes(bookFilter.toLowerCase())
+                                    )
+                                    .map(book => (
+                                        <div key={book.id} className="mb-1">
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedBook(book);
+                                                    setSelectedChapter(1);
+                                                    setShowBookPicker(false);
+                                                    setBookFilter(''); // Clear filter when selecting
+                                                }}
+                                                className={cn(
+                                                    "w-full text-left px-3 py-1.5 rounded text-sm hover:bg-zinc-800 transition-colors",
+                                                    book.id === selectedBook.id && "bg-amber-500/10 text-amber-400"
+                                                )}
+                                            >
+                                                {book.name}
+                                                <span className="text-xs text-zinc-500 ml-2">({book.chapters} ch)</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                {BIBLE_BOOKS.filter(book =>
+                                    book.name.toLowerCase().includes(bookFilter.toLowerCase()) ||
+                                    book.id.toLowerCase().includes(bookFilter.toLowerCase())
+                                ).length === 0 && (
+                                        <div className="text-center py-4 text-zinc-500 text-sm">
+                                            No books found for "{bookFilter}"
+                                        </div>
+                                    )}
                             </div>
                         </div>
                     )}
@@ -322,23 +341,26 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                 </div>
             </div>
 
-            {/* Content Area */}
-            <div ref={contentRef} className="flex-1 overflow-y-auto custom-scrollbar">
+            {/* Content Area - Main scrollable container */}
+            <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar" style={{ scrollBehavior: 'smooth' }}>
                 {searchResults.length > 0 ? (
                     /* Search Results */
-                    <div className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-zinc-300">Search Results</h3>
+                    <div className="p-4 pb-8">
+                        <div className="flex items-center justify-between mb-4 sticky top-0 bg-zinc-900 py-2 -mt-2 z-10">
+                            <h3 className="text-sm font-bold text-zinc-300">Search Results ({searchResults.length})</h3>
                             <button
-                                onClick={() => setSearchResults([])}
-                                className="text-xs text-zinc-500 hover:text-white"
+                                onClick={() => {
+                                    setSearchResults([]);
+                                    setSearchQuery('');
+                                }}
+                                className="text-xs text-zinc-500 hover:text-white px-2 py-1 hover:bg-zinc-800 rounded transition-colors"
                             >
                                 Clear
                             </button>
                         </div>
                         <div className="space-y-4">
                             {searchResults.map((result, i) => (
-                                <div key={i} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
+                                <div key={i} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors">
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="text-xs font-bold text-amber-400">{result.reference}</span>
                                         <span className="text-xs text-zinc-600">{result.translation}</span>
@@ -347,7 +369,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                                     {onInsertVerse && (
                                         <button
                                             onClick={() => onInsertVerse(result.text, result.reference)}
-                                            className="mt-3 text-xs text-amber-500 hover:text-amber-400"
+                                            className="mt-3 text-xs text-amber-500 hover:text-amber-400 hover:underline"
                                         >
                                             Insert into note →
                                         </button>
@@ -357,15 +379,22 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                         </div>
                     </div>
                 ) : isLoading ? (
-                    <div className="flex items-center justify-center h-full">
+                    <div className="flex items-center justify-center h-full min-h-[300px]">
                         <div className="text-center">
                             <div className="w-8 h-8 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
                             <p className="text-sm text-zinc-500">Loading...</p>
                         </div>
                     </div>
+                ) : isSearching ? (
+                    <div className="flex items-center justify-center h-full min-h-[300px]">
+                        <div className="text-center">
+                            <div className="w-8 h-8 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
+                            <p className="text-sm text-zinc-500">Searching Scripture...</p>
+                        </div>
+                    </div>
                 ) : chapterContent?.verses ? (
                     /* Chapter Content with Verses */
-                    <div className="p-6">
+                    <div className="p-6 pb-12">
                         <h2 className="text-xl font-serif font-bold text-center mb-6 text-zinc-200">
                             {selectedBook.name} {selectedChapter}
                         </h2>
@@ -414,7 +443,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                     </div>
                 ) : chapterContent?.text ? (
                     /* Fallback: Plain text */
-                    <div className="p-6">
+                    <div className="p-6 pb-12">
                         <h2 className="text-xl font-serif font-bold text-center mb-6 text-zinc-200">
                             {chapterContent.reference}
                         </h2>
@@ -426,7 +455,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                         </p>
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center h-full">
+                    <div className="flex items-center justify-center h-full min-h-[300px]">
                         <p className="text-sm text-zinc-500">Select a chapter to read</p>
                     </div>
                 )}

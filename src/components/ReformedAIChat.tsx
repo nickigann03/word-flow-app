@@ -12,9 +12,11 @@ interface ReformedAIChatProps {
     isOpen: boolean;
     onClose: () => void;
     onInsertVerse?: (verse: string, reference: string) => void;
+    noteContext?: string; // Current note content for context-aware responses
+    noteTitle?: string;   // Current note title
 }
 
-export function ReformedAIChat({ isOpen, onClose, onInsertVerse }: ReformedAIChatProps) {
+export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, noteTitle }: ReformedAIChatProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +34,14 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse }: ReformedAICha
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    const QUICK_QUESTIONS = [
+    const QUICK_QUESTIONS = noteContext ? [
+        "What is the main theme of my note?",
+        "Suggest related Bible verses for my note",
+        "What theological concepts are in my note?",
+        "How can I improve this sermon outline?",
+        "What are the key points in my note?",
+        "Explain any doctrine mentioned in my note",
+    ] : [
         "What is justification by faith?",
         "Explain the five points of Calvinism",
         "What does it mean to be elect?",
@@ -73,7 +82,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse }: ReformedAICha
         setMessages(prev => [...prev, tempUserMsg]);
 
         try {
-            const response = await reformedAIService.chat(userMessage);
+            const response = await reformedAIService.chat(userMessage, noteContext);
             setMessages(prev => [...prev.slice(0, -1), tempUserMsg, response]);
         } catch (error) {
             console.error('Chat error:', error);
@@ -179,7 +188,9 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse }: ReformedAICha
                     </div>
                     <div>
                         <span className="font-semibold text-sm">Reformed AI</span>
-                        <span className="block text-[10px] text-zinc-500">Evangelical • Sola Scriptura</span>
+                        <span className="block text-[10px] text-zinc-500">
+                            {noteContext ? `Viewing: ${noteTitle || 'Current Note'}` : 'Evangelical • Sola Scriptura'}
+                        </span>
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -214,8 +225,19 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse }: ReformedAICha
                         </div>
                         <h3 className="text-lg font-bold mb-2">Reformed AI Assistant</h3>
                         <p className="text-sm text-zinc-500 mb-6 max-w-xs">
-                            Ask theological questions rooted in the Reformed tradition. I'll provide Scripture-based answers.
+                            {noteContext
+                                ? "I can see your current note. Ask me questions about it, or for theological insights!"
+                                : "Ask theological questions rooted in the Reformed tradition. I'll provide Scripture-based answers."
+                            }
                         </p>
+                        {noteContext && (
+                            <div className="mb-4 px-4 py-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-left">
+                                <p className="text-[10px] uppercase tracking-wider text-purple-400 mb-1">Note Context Active</p>
+                                <p className="text-xs text-zinc-400 line-clamp-2">
+                                    {noteTitle ? `"${noteTitle}"` : 'Current note'} - {noteContext.length} characters
+                                </p>
+                            </div>
+                        )}
                         <div className="w-full space-y-2">
                             <p className="text-xs text-zinc-600 uppercase tracking-wider mb-3">Quick Questions</p>
                             {QUICK_QUESTIONS.map((q, i) => (

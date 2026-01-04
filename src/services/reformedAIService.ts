@@ -66,8 +66,10 @@ class ReformedAIService {
 
     /**
      * Send a message to the Reformed AI and get a response
+     * @param userMessage The user's question
+     * @param noteContext Optional - the content of the current note for context-aware responses
      */
-    async chat(userMessage: string): Promise<ChatMessage> {
+    async chat(userMessage: string, noteContext?: string): Promise<ChatMessage> {
         const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
         if (!apiKey) {
             throw new Error('Missing GROQ API Key');
@@ -82,9 +84,23 @@ class ReformedAIService {
         };
         this.conversationHistory.push(userMsg);
 
+        // Build system prompt with optional note context
+        let systemPrompt = REFORMED_SYSTEM_PROMPT;
+        if (noteContext && noteContext.trim().length > 0) {
+            systemPrompt += `\n\n**CURRENT NOTE CONTEXT:**
+The user is currently working on a note/sermon. Here is the content:
+---
+${noteContext.substring(0, 4000)}
+${noteContext.length > 4000 ? '\n...[content truncated]' : ''}
+---
+
+When the user asks about "my note," "this sermon," "my outline," or similar references, they are referring to the above content. 
+You can analyze, suggest improvements, provide theological insights, suggest related Bible verses, and help with the content.`;
+        }
+
         // Build messages array for API
         const messages = [
-            { role: 'system', content: REFORMED_SYSTEM_PROMPT },
+            { role: 'system', content: systemPrompt },
             ...this.conversationHistory.slice(-10).map(m => ({
                 role: m.role,
                 content: m.content

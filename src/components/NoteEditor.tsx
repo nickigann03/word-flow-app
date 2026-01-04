@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent, BubbleMenu, FloatingMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
@@ -9,25 +9,43 @@ import TextStyle from '@tiptap/extension-text-style';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Image from '@tiptap/extension-image';
-import { CommentMark, CircleMark, FontSize } from './EditorExtensions';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TaskList } from '@tiptap/extension-task-list';
+import { TaskItem } from '@tiptap/extension-task-item';
+import HorizontalRule from '@tiptap/extension-horizontal-rule';
+import { Subscript } from '@tiptap/extension-subscript';
+import { Superscript } from '@tiptap/extension-superscript';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
+import {
+    CommentMark, CircleMark, FontSize, Indent,
+    Details, DetailsSummary, DetailsContent, Callout
+} from './EditorExtensions';
 import { BibleReferenceExtension } from './BibleReference';
 import {
     Bold, Italic, Underline as UnderlineIcon,
-    Heading1, Heading2, List, AlignLeft, AlignCenter, AlignRight,
-    Sparkles, BookOpen, Quote, ChevronDown, Trash,
+    Heading1, Heading2, Heading3, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+    Sparkles, BookOpen, Quote, ChevronDown, Trash, ChevronRight,
     Highlighter, Circle, MessageSquarePlus, Image as ImageIcon,
-    Download, FileText, Youtube, Upload, Radio, Square, Clock
+    FileText, Upload, Radio, Square, Clock,
+    Table as TableIcon, CheckSquare, Code, Minus, Type,
+    Info, AlertTriangle, CheckCircle, XCircle,
+    RowsIcon, ColumnsIcon, Trash2, Plus, Indent as IndentIcon,
+    Subscript as SubIcon, Superscript as SupIcon, Pilcrow
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
 import audioRecorderService from '@/services/audioRecorderService';
 import { Note } from '@/services/firestoreService';
 
-// Dynamic import for html2pdf to avoid potential SSR issues if package is hostile (though usually fine)
-// We'll require it inside the function or use standard import if it supports browser
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
+
+const lowlight = createLowlight(common);
 
 interface NoteEditorProps {
     note: Note;
@@ -38,11 +56,158 @@ interface NoteEditorProps {
     onInsertComplete?: () => void;
 }
 
+// Slash Commands Menu
+interface SlashCommand {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+    command: (editor: any) => void;
+    category: string;
+}
+
+const slashCommands: SlashCommand[] = [
+    // Basic blocks
+    {
+        title: 'Heading 1',
+        description: 'Large section heading',
+        icon: <Heading1 className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+        category: 'Basic'
+    },
+    {
+        title: 'Heading 2',
+        description: 'Medium section heading',
+        icon: <Heading2 className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+        category: 'Basic'
+    },
+    {
+        title: 'Heading 3',
+        description: 'Small section heading',
+        icon: <Heading3 className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+        category: 'Basic'
+    },
+    {
+        title: 'Paragraph',
+        description: 'Plain text paragraph',
+        icon: <Pilcrow className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().setParagraph().run(),
+        category: 'Basic'
+    },
+    // Lists
+    {
+        title: 'Bullet List',
+        description: 'Unordered list',
+        icon: <List className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleBulletList().run(),
+        category: 'Lists'
+    },
+    {
+        title: 'Numbered List',
+        description: 'Ordered list',
+        icon: <ListOrdered className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleOrderedList().run(),
+        category: 'Lists'
+    },
+    {
+        title: 'Task List',
+        description: 'Checklist with checkboxes',
+        icon: <CheckSquare className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleTaskList().run(),
+        category: 'Lists'
+    },
+    // Advanced blocks
+    {
+        title: 'Toggle Block',
+        description: 'Collapsible content section',
+        icon: <ChevronRight className="w-4 h-4" />,
+        command: (editor) => editor.commands.toggleDetails(),
+        category: 'Advanced'
+    },
+    {
+        title: 'Quote',
+        description: 'Block quotation',
+        icon: <Quote className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleBlockquote().run(),
+        category: 'Advanced'
+    },
+    {
+        title: 'Code Block',
+        description: 'Code with syntax highlighting',
+        icon: <Code className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().toggleCodeBlock().run(),
+        category: 'Advanced'
+    },
+    {
+        title: 'Divider',
+        description: 'Horizontal line separator',
+        icon: <Minus className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().setHorizontalRule().run(),
+        category: 'Advanced'
+    },
+    // Tables
+    {
+        title: 'Table',
+        description: 'Insert a table',
+        icon: <TableIcon className="w-4 h-4" />,
+        command: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+        category: 'Tables'
+    },
+    // Callouts
+    {
+        title: 'Info Callout',
+        description: 'Blue information box',
+        icon: <Info className="w-4 h-4 text-blue-400" />,
+        command: (editor) => editor.commands.setCallout('info'),
+        category: 'Callouts'
+    },
+    {
+        title: 'Warning Callout',
+        description: 'Yellow warning box',
+        icon: <AlertTriangle className="w-4 h-4 text-yellow-400" />,
+        command: (editor) => editor.commands.setCallout('warning'),
+        category: 'Callouts'
+    },
+    {
+        title: 'Success Callout',
+        description: 'Green success box',
+        icon: <CheckCircle className="w-4 h-4 text-green-400" />,
+        command: (editor) => editor.commands.setCallout('success'),
+        category: 'Callouts'
+    },
+    {
+        title: 'Error Callout',
+        description: 'Red error box',
+        icon: <XCircle className="w-4 h-4 text-red-400" />,
+        command: (editor) => editor.commands.setCallout('error'),
+        category: 'Callouts'
+    },
+    // Media
+    {
+        title: 'Image',
+        description: 'Insert an image via URL',
+        icon: <ImageIcon className="w-4 h-4" />,
+        command: (editor) => {
+            const url = prompt("Enter image URL:");
+            if (url) editor.chain().focus().setImage({ src: url }).run();
+        },
+        category: 'Media'
+    },
+];
+
 export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, onInsertComplete }: NoteEditorProps) {
     const [title, setTitle] = useState(note.title);
     const [aiLoading, setAiLoading] = useState(false);
     const [exegeteResult, setExegeteResult] = useState<{ definition: string, verse: string } | null>(null);
     const [hoverVerse, setHoverVerse] = useState<{ verse: string, text: string, x: number, y: number } | null>(null);
+
+    // Slash Commands State
+    const [showSlashMenu, setShowSlashMenu] = useState(false);
+    const [slashFilter, setSlashFilter] = useState('');
+    const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 });
+    const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+    const slashMenuRef = useRef<HTMLDivElement>(null);
 
     // Sermon Recording State
     const [isSermonRecording, setIsSermonRecording] = useState(false);
@@ -58,25 +223,74 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const [commentText, setCommentText] = useState('');
     const [commentSelection, setCommentSelection] = useState<{ from: number, to: number } | null>(null);
 
+    // Table Menu State
+    const [showTableMenu, setShowTableMenu] = useState(false);
+
     const editorRef = useRef<HTMLDivElement>(null);
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
+            StarterKit.configure({
+                codeBlock: false, // We use CodeBlockLowlight instead
+                horizontalRule: false, // We use our own
+            }),
             Highlight.configure({ multicolor: true }),
             TextStyle,
             Color,
             Underline,
             FontSize,
+            Indent,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             Image,
+            // Table extensions
+            Table.configure({
+                resizable: true,
+                HTMLAttributes: {
+                    class: 'notion-table',
+                },
+            }),
+            TableRow,
+            TableCell,
+            TableHeader,
+            // Task/Todo list
+            TaskList.configure({
+                HTMLAttributes: {
+                    class: 'task-list',
+                },
+            }),
+            TaskItem.configure({
+                nested: true,
+                HTMLAttributes: {
+                    class: 'task-item',
+                },
+            }),
+            // Code block with syntax highlighting
+            CodeBlockLowlight.configure({
+                lowlight,
+                HTMLAttributes: {
+                    class: 'code-block',
+                },
+            }),
+            // Horizontal rule
+            HorizontalRule.configure({
+                HTMLAttributes: {
+                    class: 'divider',
+                },
+            }),
+            // Subscript and Superscript
+            Subscript,
+            Superscript,
+            // Custom extensions
             CommentMark,
             CircleMark,
+            Details,
+            DetailsSummary,
+            DetailsContent,
+            Callout,
             BibleReferenceExtension.configure({
                 onHover: async (verse, event) => {
                     const target = event.target as HTMLElement;
                     const rect = target.getBoundingClientRect();
-                    // Basic heuristic for popup position
                     setHoverVerse({ verse, text: 'Loading...', x: rect.left, y: rect.bottom + 5 });
                     try {
                         const res = await fetch(`https://bible-api.com/${encodeURIComponent(verse)}`);
@@ -89,16 +303,80 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     }
                 }
             }),
-            Placeholder.configure({ placeholder: 'Type, paste transcript, or dictate...' }),
+            Placeholder.configure({ placeholder: 'Press "/" for commands, or start typing...' }),
         ],
         content: note.content || '',
-        immediatelyRender: false, // Fix SSR hydration mismatch
+        immediatelyRender: false,
         editorProps: {
             attributes: {
                 class: 'prose prose-zinc dark:prose-invert max-w-none focus:outline-none min-h-[500px] outline-none font-sans pl-8 pr-8 py-8',
             },
             handleKeyDown: (view, event) => {
-                if (event.key === 'Tab') { return false; }
+                // Handle slash commands
+                if (event.key === '/') {
+                    const { state } = view;
+                    const { selection } = state;
+                    const coords = view.coordsAtPos(selection.from);
+                    setSlashMenuPosition({
+                        top: coords.bottom + 5,
+                        left: coords.left,
+                    });
+                    setShowSlashMenu(true);
+                    setSlashFilter('');
+                    setSelectedSlashIndex(0);
+                    return false;
+                }
+
+                // Handle escape to close slash menu
+                if (event.key === 'Escape' && showSlashMenu) {
+                    setShowSlashMenu(false);
+                    return true;
+                }
+
+                // Navigate slash menu
+                if (showSlashMenu) {
+                    const filteredCommands = slashCommands.filter(cmd =>
+                        cmd.title.toLowerCase().includes(slashFilter.toLowerCase()) ||
+                        cmd.description.toLowerCase().includes(slashFilter.toLowerCase())
+                    );
+
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setSelectedSlashIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+                        return true;
+                    }
+                    if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setSelectedSlashIndex(prev => Math.max(prev - 1, 0));
+                        return true;
+                    }
+                    if (event.key === 'Enter' && filteredCommands[selectedSlashIndex]) {
+                        event.preventDefault();
+                        // Delete the "/" and filter text
+                        const { state, dispatch } = view;
+                        const deleteFrom = state.selection.from - slashFilter.length - 1;
+                        const tr = state.tr.delete(deleteFrom, state.selection.from);
+                        dispatch(tr);
+                        // Execute command
+                        filteredCommands[selectedSlashIndex].command(editor);
+                        setShowSlashMenu(false);
+                        return true;
+                    }
+                    if (event.key === 'Backspace' && slashFilter === '') {
+                        setShowSlashMenu(false);
+                        return false;
+                    }
+                    // Update filter on typing
+                    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+                        setSlashFilter(prev => prev + event.key);
+                        return false;
+                    }
+                    if (event.key === 'Backspace') {
+                        setSlashFilter(prev => prev.slice(0, -1));
+                        return false;
+                    }
+                }
+
                 return false;
             },
             handlePaste: (view, event) => {
@@ -112,7 +390,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
                     const id = uuidv4();
                     const storageRef = ref(storage, `images/${note.userId}/${id}`);
-                    setAiLoading(true); // Indicate upload
+                    setAiLoading(true);
 
                     uploadBytes(storageRef, file).then(async () => {
                         const url = await getDownloadURL(storageRef);
@@ -133,7 +411,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             }
         },
         onUpdate: ({ editor }) => {
-            // autosave via effect
+            // Close slash menu if cursor moves
+            if (showSlashMenu) {
+                const text = editor.getText();
+                if (!text.includes('/')) {
+                    setShowSlashMenu(false);
+                }
+            }
         }
     });
 
@@ -157,12 +441,10 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         return () => clearTimeout(timeout);
     }, [title, editor?.getHTML(), note, onSave]);
 
-
-
     useEffect(() => {
         const clear = () => setHoverVerse(null);
         window.addEventListener('scroll', clear);
-        window.addEventListener('click', clear); // Close on click elsewhere
+        window.addEventListener('click', clear);
         return () => { window.removeEventListener('scroll', clear); window.removeEventListener('click', clear); };
     }, []);
 
@@ -175,6 +457,17 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             onInsertComplete?.();
         }
     }, [pendingInsert, editor, onInsertComplete]);
+
+    // Close slash menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (slashMenuRef.current && !slashMenuRef.current.contains(e.target as Node)) {
+                setShowSlashMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Format duration as MM:SS
     const formatDuration = (seconds: number) => {
@@ -190,7 +483,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             setIsSermonRecording(true);
             setSermonRecordingDuration(0);
 
-            // Start duration counter
             recordingIntervalRef.current = setInterval(() => {
                 setSermonRecordingDuration(prev => prev + 1);
             }, 1000);
@@ -206,7 +498,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
         setAiLoading(true);
 
-        // Stop duration counter
         if (recordingIntervalRef.current) {
             clearInterval(recordingIntervalRef.current);
             recordingIntervalRef.current = null;
@@ -216,7 +507,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             const result = await audioRecorderService.stopRecording();
             setIsSermonRecording(false);
 
-            // Insert transcript section into the note
             const transcriptSection = `
                 <h2>📝 Sermon Transcript</h2>
                 <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(result.duration))})</em></p>
@@ -227,7 +517,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
             editor.commands.insertContent(transcriptSection);
 
-            // Optionally generate summary
             if (result.transcript.length > 100) {
                 const summary = await groqService.summarizeSermon(result.transcript);
                 editor.commands.insertContent(
@@ -242,8 +531,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
         setAiLoading(false);
     };
-
-
 
     const handleAIAnalyze = async () => {
         if (!editor) return;
@@ -273,9 +560,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         setAiLoading(true);
         setShowImportDialog(false);
         try {
-            // Append raw text
             editor.commands.insertContent(`<p>${importText}</p>`);
-            // Generate Summary
             const summary = await groqService.summarizeSermon(importText);
             editor.commands.insertContent(`<blockquote><strong>Transcript Summary:</strong><br/>${summary}</blockquote><p></p>`);
             setImportText('');
@@ -295,16 +580,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } as any
         };
         html2pdf().set(opt).from(element).save();
-    };
-
-    const handleExportMD = () => {
-        if (!editor) return;
-        const text = editor.getText(); // Or a proper HTML->MD converter if strict
-        const blob = new Blob([text], { type: 'text/markdown' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${title || 'document'}.md`;
-        link.click();
     };
 
     const openCommentDialog = () => {
@@ -335,6 +610,19 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         if (url && editor) { editor.chain().focus().setImage({ src: url }).run(); }
     }
 
+    // Filter slash commands
+    const filteredSlashCommands = slashCommands.filter(cmd =>
+        cmd.title.toLowerCase().includes(slashFilter.toLowerCase()) ||
+        cmd.description.toLowerCase().includes(slashFilter.toLowerCase())
+    );
+
+    // Group commands by category
+    const groupedCommands = filteredSlashCommands.reduce((acc, cmd) => {
+        if (!acc[cmd.category]) acc[cmd.category] = [];
+        acc[cmd.category].push(cmd);
+        return acc;
+    }, {} as Record<string, SlashCommand[]>);
+
     return (
         <div className="flex flex-col h-full bg-zinc-950 relative">
             {/* Toolbar */}
@@ -350,7 +638,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {aiLoading && <span className="text-xs text-amber-500 animate-pulse font-mono">AI Processing...</span>}
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Actions */}
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
                     <button onClick={handleExportPDF} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
@@ -386,11 +673,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-transparent text-4xl font-bold text-zinc-100 placeholder:text-zinc-700 focus:outline-none mb-6 font-display" placeholder="Untitled Sermon" />
 
                     {editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex items-center gap-1 bg-zinc-900 border border-zinc-700 p-1.5 rounded-lg shadow-xl overflow-x-auto max-w-[90vw]">
+                        {/* Text formatting */}
                         <div className="flex items-center gap-0.5 border-r border-zinc-800 pr-1">
                             <button onClick={() => editor.chain().focus().toggleBold().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('bold') && "text-blue-400 bg-blue-500/10")} title="Bold"><Bold className="w-4 h-4" /></button>
                             <button onClick={() => editor.chain().focus().toggleItalic().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('italic') && "text-blue-400 bg-blue-500/10")} title="Italic"><Italic className="w-4 h-4" /></button>
                             <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('underline') && "text-blue-400 bg-blue-500/10")} title="Underline"><UnderlineIcon className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('subscript') && "text-blue-400 bg-blue-500/10")} title="Subscript"><SubIcon className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('superscript') && "text-blue-400 bg-blue-500/10")} title="Superscript"><SupIcon className="w-4 h-4" /></button>
                         </div>
+
                         {/* Font Size */}
                         <div className="flex items-center gap-0.5 border-r border-zinc-800 px-1">
                             <button onClick={() => editor.chain().focus().setFontSize('12px').run()} className={cn("px-1.5 py-1 text-xs hover:bg-zinc-800 rounded text-zinc-400", editor.isActive('textStyle', { fontSize: '12px' }) && "text-white bg-zinc-800")}>S</button>
@@ -399,17 +690,24 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                             <button onClick={() => editor.chain().focus().setFontSize('28px').run()} className={cn("px-1.5 py-1 text-xl hover:bg-zinc-800 rounded text-zinc-100", editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")}>XL</button>
                         </div>
 
-                        {/* Formatting */}
+                        {/* Alignment - now with justify */}
                         <div className="flex items-center gap-0.5 border-r border-zinc-800 px-1">
-                            <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'left' }) && "text-blue-400")}><AlignLeft className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'center' }) && "text-blue-400")}><AlignCenter className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'left' }) && "text-blue-400")} title="Align Left"><AlignLeft className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'center' }) && "text-blue-400")} title="Align Center"><AlignCenter className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'right' }) && "text-blue-400")} title="Align Right"><AlignRight className="w-4 h-4" /></button>
+                            <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'justify' }) && "text-blue-400")} title="Justify"><AlignJustify className="w-4 h-4" /></button>
                         </div>
+
+                        {/* Colors */}
                         <div className="flex items-center gap-1 border-r border-zinc-800 px-1">
                             <button onClick={() => editor.chain().focus().setColor('#f87171').run()} className={cn("w-3 h-3 rounded-full bg-red-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#f87171' }) && "ring-2 ring-white")} />
                             <button onClick={() => editor.chain().focus().setColor('#60a5fa').run()} className={cn("w-3 h-3 rounded-full bg-blue-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#60a5fa' }) && "ring-2 ring-white")} />
                             <button onClick={() => editor.chain().focus().setColor('#facc15').run()} className={cn("w-3 h-3 rounded-full bg-yellow-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#facc15' }) && "ring-2 ring-white")} />
+                            <button onClick={() => editor.chain().focus().setColor('#4ade80').run()} className={cn("w-3 h-3 rounded-full bg-green-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#4ade80' }) && "ring-2 ring-white")} />
                             <button onClick={() => editor.chain().focus().unsetColor().run()} className="text-[10px] text-zinc-500 hover:text-white">x</button>
                         </div>
+
+                        {/* Advanced */}
                         <div className="flex items-center gap-0.5 pl-1">
                             <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('highlight') && "text-amber-400")} title="Highlight"><Highlighter className="w-4 h-4" /></button>
                             <button onClick={() => editor.chain().focus().toggleCircle().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('circle') && "text-red-400")} title="Circle Word"><Circle className="w-4 h-4" /></button>
@@ -418,18 +716,101 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         </div>
                     </BubbleMenu>}
 
+                    {/* Floating Menu for new blocks */}
                     {editor && <FloatingMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex items-center gap-1 bg-zinc-900 border border-zinc-700 p-1 rounded-lg shadow-xl -ml-20">
-                        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('heading', { level: 1 }) && "text-blue-400")}><Heading1 className="w-4 h-4" /></button>
-                        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('heading', { level: 2 }) && "text-blue-400")}><Heading2 className="w-4 h-4" /></button>
-                        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('bulletList') && "text-blue-400")}><List className="w-4 h-4" /></button>
-                        <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('blockquote') && "text-blue-400")}><Quote className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('heading', { level: 1 }) && "text-blue-400")} title="Heading 1"><Heading1 className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('heading', { level: 2 }) && "text-blue-400")} title="Heading 2"><Heading2 className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('bulletList') && "text-blue-400")} title="Bullet List"><List className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('orderedList') && "text-blue-400")} title="Numbered List"><ListOrdered className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('taskList') && "text-blue-400")} title="Task List"><CheckSquare className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('blockquote') && "text-blue-400")} title="Quote"><Quote className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={cn("p-1 hover:bg-zinc-800 rounded", editor.isActive('codeBlock') && "text-blue-400")} title="Code Block"><Code className="w-4 h-4" /></button>
                         <div className="w-px h-4 bg-zinc-700 mx-1" />
-                        <button onClick={addImage} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Insert Image Link"><ImageIcon className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Insert Table"><TableIcon className="w-4 h-4" /></button>
+                        <button onClick={addImage} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Insert Image"><ImageIcon className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().setHorizontalRule().run()} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Divider"><Minus className="w-4 h-4" /></button>
                     </FloatingMenu>}
+
+                    {/* Table Controls */}
+                    {editor && editor.isActive('table') && (
+                        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-zinc-900 border border-zinc-700 p-2 rounded-xl shadow-2xl animate-in slide-in-from-bottom-2">
+                            <span className="text-xs text-zinc-500 px-2">Table</span>
+                            <div className="flex items-center gap-1 border-l border-zinc-700 pl-2">
+                                <button onClick={() => editor.chain().focus().addColumnBefore().run()} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Add Column Before"><Plus className="w-3 h-3" /></button>
+                                <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Add Column After"><ColumnsIcon className="w-4 h-4" /></button>
+                                <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1.5 hover:bg-zinc-800 rounded text-red-400 hover:text-red-300" title="Delete Column"><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                            <div className="flex items-center gap-1 border-l border-zinc-700 pl-2">
+                                <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Add Row Before"><Plus className="w-3 h-3" /></button>
+                                <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white" title="Add Row After"><RowsIcon className="w-4 h-4" /></button>
+                                <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1.5 hover:bg-zinc-800 rounded text-red-400 hover:text-red-300" title="Delete Row"><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                            <div className="flex items-center gap-1 border-l border-zinc-700 pl-2">
+                                <button onClick={() => editor.chain().focus().deleteTable().run()} className="p-1.5 hover:bg-zinc-800 rounded text-red-400 hover:text-red-300 flex items-center gap-1" title="Delete Table">
+                                    <Trash2 className="w-3 h-3" /> <span className="text-xs">Delete Table</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     <EditorContent editor={editor} />
                 </div>
             </div>
+
+            {/* Slash Commands Menu */}
+            {showSlashMenu && (
+                <div
+                    ref={slashMenuRef}
+                    className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-72 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95"
+                    style={{ top: slashMenuPosition.top, left: Math.min(slashMenuPosition.left, window.innerWidth - 300) }}
+                >
+                    <div className="p-2 border-b border-zinc-800">
+                        <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800/50 rounded-lg">
+                            <span className="text-zinc-500">/</span>
+                            <span className="text-sm text-zinc-300">{slashFilter || 'Type to filter...'}</span>
+                        </div>
+                    </div>
+                    <div className="p-1">
+                        {Object.entries(groupedCommands).map(([category, commands]) => (
+                            <div key={category}>
+                                <div className="px-2 py-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">{category}</div>
+                                {commands.map((cmd, index) => {
+                                    const globalIndex = filteredSlashCommands.indexOf(cmd);
+                                    return (
+                                        <button
+                                            key={cmd.title}
+                                            onClick={() => {
+                                                if (editor) {
+                                                    // Delete the "/" and filter text
+                                                    const { state, view } = editor;
+                                                    const deleteFrom = state.selection.from - slashFilter.length - 1;
+                                                    const tr = state.tr.delete(deleteFrom, state.selection.from);
+                                                    view.dispatch(tr);
+                                                    cmd.command(editor);
+                                                }
+                                                setShowSlashMenu(false);
+                                            }}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 px-2 py-1.5 rounded-lg text-left transition-colors",
+                                                globalIndex === selectedSlashIndex ? "bg-blue-600/20 text-blue-400" : "hover:bg-zinc-800 text-zinc-300"
+                                            )}
+                                        >
+                                            <span className="flex-shrink-0 p-1 bg-zinc-800 rounded">{cmd.icon}</span>
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-medium truncate">{cmd.title}</div>
+                                                <div className="text-xs text-zinc-500 truncate">{cmd.description}</div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ))}
+                        {filteredSlashCommands.length === 0 && (
+                            <div className="px-2 py-4 text-center text-sm text-zinc-500">No commands found</div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Exegete Result */}
             {exegeteResult && (
