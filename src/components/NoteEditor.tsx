@@ -392,25 +392,96 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     const file = imageItem.getAsFile();
                     if (!file) return false;
 
+                    // Optimistic update: Insert Blob URL immediately
+                    const blobUrl = URL.createObjectURL(file);
+                    const transaction = view.state.tr.replaceSelectionWith(
+                        view.state.schema.nodes.image.create({ src: blobUrl })
+                    );
+                    view.dispatch(transaction);
+
+                    // Upload in background
                     const id = uuidv4();
                     const storageRef = ref(storage, `images/${note.userId}/${id}`);
                     setAiLoading(true);
 
                     uploadBytes(storageRef, file).then(async () => {
-                        const url = await getDownloadURL(storageRef);
-                        const transaction = view.state.tr.replaceSelectionWith(
-                            view.state.schema.nodes.image.create({ src: url })
-                        );
-                        view.dispatch(transaction);
+                        const downloadUrl = await getDownloadURL(storageRef);
+
+                        // Find the image with the blob URL and replace its source
+                        // We need to search the doc because the position might have changed
+                        view.state.doc.descendants((node, pos) => {
+                            if (node.type.name === 'image' && node.attrs.src === blobUrl) {
+                                const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+                                    ...node.attrs,
+                                    src: downloadUrl
+                                });
+                                view.dispatch(tr);
+                                return false; // Stop searching
+                            }
+                        });
+
                         setAiLoading(false);
-                        toast.success('Image Uploaded', 'Image added to your note');
+                        toast.success('Image Uploaded', 'Sync complete');
                     }).catch(e => {
                         console.error('Upload failed', e);
                         setAiLoading(false);
-                        toast.error('Upload Failed', 'Could not upload image');
+                        toast.error('Upload Failed', 'Could not sync image');
+                        // Optional: Mark image as error or remove it
                     });
 
                     return true;
+                }
+                return false;
+            },
+            handleDrop: (view, event, _slice, moved) => {
+                if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
+                    const file = event.dataTransfer.files[0];
+                    if (file.type.startsWith('image')) {
+                        event.preventDefault();
+
+                        // Optimistic update
+                        const blobUrl = URL.createObjectURL(file);
+                        const { schema } = view.state;
+                        const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+
+                        // Insert at drop position
+                        if (coordinates) {
+                            const transaction = view.state.tr.insert(
+                                coordinates.pos,
+                                schema.nodes.image.create({ src: blobUrl })
+                            );
+                            view.dispatch(transaction);
+                        }
+
+                        // Upload in background
+                        const id = uuidv4();
+                        const storageRef = ref(storage, `images/${note.userId}/${id}`);
+                        setAiLoading(true);
+
+                        uploadBytes(storageRef, file).then(async () => {
+                            const downloadUrl = await getDownloadURL(storageRef);
+
+                            view.state.doc.descendants((node, pos) => {
+                                if (node.type.name === 'image' && node.attrs.src === blobUrl) {
+                                    const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+                                        ...node.attrs,
+                                        src: downloadUrl
+                                    });
+                                    view.dispatch(tr);
+                                    return false;
+                                }
+                            });
+
+                            setAiLoading(false);
+                            toast.success('Image Uploaded', 'Sync complete');
+                        }).catch(e => {
+                            console.error('Upload failed', e);
+                            setAiLoading(false);
+                            toast.error('Upload Failed', 'Could not sync image');
+                        });
+
+                        return true;
+                    }
                 }
                 return false;
             }
