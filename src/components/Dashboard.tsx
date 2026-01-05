@@ -160,8 +160,15 @@ export function Dashboard() {
                 onCreateFolder={async () => {
                     const title = prompt("Folder Name:");
                     if (title && user) {
-                        await firestoreService.createFolder(user.uid, { title });
-                        loadFolders();
+                        const toastId = toast.loading('Creating Folder', 'Creating new folder...');
+                        try {
+                            await firestoreService.createFolder(user.uid, { title });
+                            await loadFolders();
+                            toast.updateToast(toastId, { title: 'Folder Created', message: 'New folder added', type: 'success' });
+                        } catch (e) {
+                            console.error(e);
+                            toast.updateToast(toastId, { title: 'Creation Failed', message: 'Could not create folder', type: 'error' });
+                        }
                     }
                 }}
                 onDeleteFolder={async (id) => {
