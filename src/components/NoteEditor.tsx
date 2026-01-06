@@ -425,7 +425,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     }).catch(e => {
                         console.error('Upload failed', e);
                         setAiLoading(false);
-                        toast.error('Upload Failed', 'Could not sync image');
+                        toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
                         // Optional: Mark image as error or remove it
                     });
 
@@ -477,7 +477,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         }).catch(e => {
                             console.error('Upload failed', e);
                             setAiLoading(false);
-                            toast.error('Upload Failed', 'Could not sync image');
+                            toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
                         });
 
                         return true;

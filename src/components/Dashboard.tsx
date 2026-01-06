@@ -54,7 +54,7 @@ export function Dashboard() {
             setFolders(data);
         } catch (error) {
             console.error('Failed to load folders:', error);
-            toast.error('Sync Error', 'Failed to load folders. Please check your connection.');
+            toast.error('Sync Error', `Failed to load folders: ${(error as Error).message}`);
         }
     }
 
@@ -70,7 +70,7 @@ export function Dashboard() {
             setNotes(data);
         } catch (error) {
             console.error('Failed to load notes:', error);
-            toast.error('Sync Error', 'Failed to load notes. Please check your connection.');
+            toast.error('Sync Error', `Failed to load notes: ${(error as Error).message}`);
         }
     }
 
@@ -104,7 +104,7 @@ export function Dashboard() {
             toast.updateToast(toastId, { title: 'Note Created', message: 'Started a new note', type: 'success' });
         } catch (error) {
             console.error('Failed to create note:', error);
-            toast.updateToast(toastId, { title: 'Creation Failed', message: 'Could not create new note', type: 'error' });
+            toast.updateToast(toastId, { title: 'Creation Failed', message: (error as Error).message || 'Could not create new note', type: 'error' });
         }
     };
 
@@ -122,7 +122,7 @@ export function Dashboard() {
             setCurrentNoteContent(updated.content || '');
         } catch (error) {
             console.error('Failed to save note:', error);
-            toast.error('Save Failed', 'Your changes could not be saved');
+            toast.error('Save Failed', `Your changes could not be saved: ${(error as Error).message}`);
         }
     };
 
@@ -138,7 +138,7 @@ export function Dashboard() {
             toast.updateToast(toastId, { title: 'Note Deleted', message: 'Note has been removed', type: 'success' });
         } catch (error) {
             console.error('Failed to delete note:', error);
-            toast.updateToast(toastId, { title: 'Delete Failed', message: 'Could not delete the note', type: 'error' });
+            toast.updateToast(toastId, { title: 'Delete Failed', message: (error as Error).message || 'Could not delete the note', type: 'error' });
         }
     };
 
@@ -167,7 +167,7 @@ export function Dashboard() {
                             toast.updateToast(toastId, { title: 'Folder Created', message: 'New folder added', type: 'success' });
                         } catch (e) {
                             console.error(e);
-                            toast.updateToast(toastId, { title: 'Creation Failed', message: 'Could not create folder', type: 'error' });
+                            toast.updateToast(toastId, { title: 'Creation Failed', message: (e as Error).message || 'Could not create folder', type: 'error' });
                         }
                     }
                 }}
@@ -180,7 +180,7 @@ export function Dashboard() {
                             if (selectedFolder === id) setSelectedFolder('recent');
                             toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
                         } catch (e) {
-                            toast.updateToast(toastId, { title: 'Failed to delete folder', type: 'error' });
+                            toast.updateToast(toastId, { title: 'Failed to delete folder', message: (e as Error).message || 'Could not delete folder', type: 'error' });
                         }
                     }
                 }}

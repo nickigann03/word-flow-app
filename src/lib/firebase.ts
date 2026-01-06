@@ -12,6 +12,17 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
+// Debug: Check if config is loaded
+if (typeof window !== 'undefined') {
+    const missingKeys = Object.entries(firebaseConfig)
+        .filter(([_, value]) => !value)
+        .map(([key]) => key);
+
+    if (missingKeys.length > 0) {
+        console.error('🔥 Firebase Configuration Error: The following keys are missing. Check your .env.local file or Vercel Environment Variables:', missingKeys);
+    }
+}
+
 // Initialize Firebase only once
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
