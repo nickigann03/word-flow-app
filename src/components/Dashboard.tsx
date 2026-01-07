@@ -287,17 +287,25 @@ export function Dashboard() {
                         e.preventDefault();
                         if (!createFolderName.trim() || !user) return;
 
-                        const toastId = toast.loading('Creating Folder', 'Creating new folder...');
-                        try {
-                            const newFolderId = await firestoreService.createFolder(user.uid, { title: createFolderName });
-                            const newFolder: Folder = { id: newFolderId, title: createFolderName, userId: user.uid, createdAt: new Date() };
-                            setFolders(prev => [newFolder, ...prev]);
-                            toast.updateToast(toastId, { title: 'Folder Created', message: 'New folder added', type: 'success' });
-                            setIsCreateFolderOpen(false);
-                        } catch (e) {
-                            console.error(e);
-                            toast.updateToast(toastId, { title: 'Creation Failed', message: (e as Error).message || 'Could not create folder', type: 'error' });
-                        }
+                        const newId = firestoreService.getNewFolderId();
+                        const newFolder: Folder = { id: newId, title: createFolderName, userId: user.uid, createdAt: new Date() };
+
+                        // 1. Instant UI Update
+                        setFolders(prev => [newFolder, ...prev]);
+                        setIsCreateFolderOpen(false);
+
+                        // 2. Background Sync
+                        // We don't await this for the UI feedback, but we catch errors
+                        firestoreService.createFolder(user.uid, { title: createFolderName }, newId)
+                            .then(() => {
+                                // Silent success or subtle toast if desired, but user already sees it "done"
+                            })
+                            .catch(e => {
+                                console.error('Folder sync failed', e);
+                                toast.error('Sync Failed', 'Could not save folder to server');
+                                // Revert optimistic update
+                                setFolders(prev => prev.filter(f => f.id !== newId));
+                            });
                     }}
                     className="space-y-4"
                 >

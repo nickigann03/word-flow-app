@@ -10,7 +10,8 @@ import {
     orderBy,
     getDocs,
     serverTimestamp,
-    getDoc
+    getDoc,
+    setDoc
 } from 'firebase/firestore';
 
 export interface Note {
@@ -33,13 +34,26 @@ export interface Folder {
 
 class FirestoreService {
     // --- Folders ---
-    async createFolder(userId: string, folderData: { title: string }) {
-        const docRef = await addDoc(collection(db, 'folders'), {
-            userId,
-            title: folderData.title,
-            createdAt: serverTimestamp()
-        });
-        return docRef.id;
+    getNewFolderId() {
+        return doc(collection(db, 'folders')).id;
+    }
+
+    async createFolder(userId: string, folderData: { title: string }, customId?: string) {
+        if (customId) {
+            await setDoc(doc(db, 'folders', customId), {
+                userId,
+                title: folderData.title,
+                createdAt: serverTimestamp()
+            });
+            return customId;
+        } else {
+            const docRef = await addDoc(collection(db, 'folders'), {
+                userId,
+                title: folderData.title,
+                createdAt: serverTimestamp()
+            });
+            return docRef.id;
+        }
     }
 
     async getFolders(userId: string) {
