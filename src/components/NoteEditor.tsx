@@ -232,6 +232,17 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
     const editorRef = useRef<HTMLDivElement>(null);
 
+    // Auto-save refs
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const performSaveRef = useRef({ note, title, onSave });
+
+    useEffect(() => {
+        performSaveRef.current = { note, title, onSave };
+    }, [note, title, onSave]);
+
+    // Callback ref for onUpdate to avoid circular dependency
+    const onUpdateTrigger = useRef<() => void>(() => { });
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -494,8 +505,23 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     setShowSlashMenu(false);
                 }
             }
+            onUpdateTrigger.current();
         }
     });
+
+    const triggerSave = useCallback(() => {
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+            const { note, title, onSave } = performSaveRef.current;
+            if (editor) {
+                onSave({ ...note, title, content: editor.getHTML() });
+            }
+        }, 1000);
+    }, [editor]);
+
+    useEffect(() => {
+        onUpdateTrigger.current = triggerSave;
+    }, [triggerSave]);
 
     useEffect(() => {
         if (editor && note.id !== previousNoteId) {
@@ -505,17 +531,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         }
     }, [note.id, editor]);
     const [previousNoteId, setPreviousNoteId] = useState(note.id);
-
-    useEffect(() => {
-        if (!editor) return;
-        const timeout = setTimeout(() => {
-            const currentHTML = editor.getHTML();
-            if (title !== note.title || currentHTML !== note.content) {
-                onSave({ ...note, title, content: currentHTML });
-            }
-        }, 1000);
-        return () => clearTimeout(timeout);
-    }, [title, editor?.getHTML(), note, onSave]);
 
     useEffect(() => {
         const clear = () => setHoverVerse(null);
@@ -765,7 +780,23 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto" ref={editorRef}>
                 <div className="max-w-3xl mx-auto py-12 px-8 min-h-[90vh] bg-zinc-950">
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-transparent text-4xl font-bold text-zinc-100 placeholder:text-zinc-700 focus:outline-none mb-6 font-display" placeholder="Untitled Sermon" />
+                    <input
+                        value={title}
+                        onChange={(e) => {
+                            const newTitle = e.target.value;
+                            setTitle(newTitle);
+                            // Debounce save with new title
+                            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                            saveTimeoutRef.current = setTimeout(() => {
+                                const { note, onSave } = performSaveRef.current;
+                                if (editor) {
+                                    onSave({ ...note, title: newTitle, content: editor.getHTML() });
+                                }
+                            }, 1000);
+                        }}
+                        className="w-full bg-transparent text-4xl font-bold text-zinc-100 placeholder:text-zinc-700 focus:outline-none mb-6 font-display"
+                        placeholder="Untitled Sermon"
+                    />
 
                     {editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex items-center gap-1 bg-zinc-900 border border-zinc-700 p-1.5 rounded-lg shadow-xl overflow-x-auto max-w-[90vw]">
                         {/* Text formatting */}

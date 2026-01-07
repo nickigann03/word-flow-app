@@ -10,6 +10,7 @@ import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getAllTemplates } from '@/data/sermonTemplates';
 import { useToast } from './Toast';
+import { Modal } from './Modal';
 
 export function Dashboard() {
     const { user } = useAuth();
@@ -24,6 +25,11 @@ export function Dashboard() {
     const [isBibleOpen, setIsBibleOpen] = useState(false);
     const [isAIChatOpen, setIsAIChatOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+    // Modal states
+    const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+    const [createFolderName, setCreateFolderName] = useState('');
+    const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
 
     // Reference to the NoteEditor for inserting content
     const [pendingInsert, setPendingInsert] = useState<{ text: string; reference: string } | null>(null);
@@ -157,33 +163,11 @@ export function Dashboard() {
                 folders={folders}
                 selectedFolder={selectedFolder}
                 onSelectFolder={handleSelectFolder}
-                onCreateFolder={async () => {
-                    const title = prompt("Folder Name:");
-                    if (title && user) {
-                        const toastId = toast.loading('Creating Folder', 'Creating new folder...');
-                        try {
-                            await firestoreService.createFolder(user.uid, { title });
-                            await loadFolders();
-                            toast.updateToast(toastId, { title: 'Folder Created', message: 'New folder added', type: 'success' });
-                        } catch (e) {
-                            console.error(e);
-                            toast.updateToast(toastId, { title: 'Creation Failed', message: (e as Error).message || 'Could not create folder', type: 'error' });
-                        }
-                    }
+                onCreateFolder={() => {
+                    setCreateFolderName('');
+                    setIsCreateFolderOpen(true);
                 }}
-                onDeleteFolder={async (id) => {
-                    if (confirm("Delete this folder? Notes inside might be lost.")) {
-                        const toastId = toast.loading('Deleting Folder...');
-                        try {
-                            await firestoreService.deleteFolder(id);
-                            loadFolders();
-                            if (selectedFolder === id) setSelectedFolder('recent');
-                            toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
-                        } catch (e) {
-                            toast.updateToast(toastId, { title: 'Failed to delete folder', message: (e as Error).message || 'Could not delete folder', type: 'error' });
-                        }
-                    }
-                }}
+                onDeleteFolder={(id) => setFolderToDelete(id)}
                 onOpenBible={handleToggleBible}
                 onOpenAIChat={handleToggleAIChat}
                 isBibleOpen={isBibleOpen}
@@ -291,6 +275,101 @@ export function Dashboard() {
                 noteContext={currentNoteContent}
                 noteTitle={selectedNote?.title}
             />
+
+            {/* Create Folder Modal */}
+            <Modal
+                isOpen={isCreateFolderOpen}
+                onClose={() => setIsCreateFolderOpen(false)}
+                title="New Folder"
+            >
+                <form
+                    onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!createFolderName.trim() || !user) return;
+
+                        const toastId = toast.loading('Creating Folder', 'Creating new folder...');
+                        try {
+                            const newFolderId = await firestoreService.createFolder(user.uid, { title: createFolderName });
+                            const newFolder: Folder = { id: newFolderId, title: createFolderName, userId: user.uid, createdAt: new Date() };
+                            setFolders(prev => [newFolder, ...prev]);
+                            toast.updateToast(toastId, { title: 'Folder Created', message: 'New folder added', type: 'success' });
+                            setIsCreateFolderOpen(false);
+                        } catch (e) {
+                            console.error(e);
+                            toast.updateToast(toastId, { title: 'Creation Failed', message: (e as Error).message || 'Could not create folder', type: 'error' });
+                        }
+                    }}
+                    className="space-y-4"
+                >
+                    <div>
+                        <label className="block text-sm font-medium text-zinc-400 mb-1.5">Folder Name</label>
+                        <input
+                            value={createFolderName}
+                            onChange={(e) => setCreateFolderName(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                            placeholder="e.g. Sunday Sermons"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsCreateFolderOpen(false)}
+                            className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={!createFolderName.trim()}
+                            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Create Folder
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Delete Folder Modal */}
+            <Modal
+                isOpen={!!folderToDelete}
+                onClose={() => setFolderToDelete(null)}
+                title="Delete Folder?"
+            >
+                <div className="space-y-4">
+                    <p className="text-zinc-400">
+                        Are you sure you want to delete this folder? Notes inside might be lost or become uncategorized.
+                        <br /><br />
+                        <span className="text-red-400 text-sm">This action cannot be undone.</span>
+                    </p>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            onClick={() => setFolderToDelete(null)}
+                            className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={async () => {
+                                if (!folderToDelete) return;
+                                const toastId = toast.loading('Deleting Folder...');
+                                try {
+                                    await firestoreService.deleteFolder(folderToDelete);
+                                    loadFolders();
+                                    if (selectedFolder === folderToDelete) setSelectedFolder('recent');
+                                    toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
+                                    setFolderToDelete(null);
+                                } catch (e) {
+                                    toast.updateToast(toastId, { title: 'Failed to delete folder', message: (e as Error).message || 'Could not delete folder', type: 'error' });
+                                }
+                            }}
+                            className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+                        >
+                            Delete Folder
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }
