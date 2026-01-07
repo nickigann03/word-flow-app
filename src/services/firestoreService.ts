@@ -81,14 +81,28 @@ class FirestoreService {
     }
 
     // --- Notes ---
-    async createNote(userId: string, noteData: Partial<Note>) {
-        const docRef = await addDoc(collection(db, 'notes'), {
-            ...noteData,
-            userId,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-        return docRef.id;
+    getNewNoteId() {
+        return doc(collection(db, 'notes')).id;
+    }
+
+    async createNote(userId: string, noteData: Partial<Note>, customId?: string) {
+        if (customId) {
+            await setDoc(doc(db, 'notes', customId), {
+                ...noteData,
+                userId,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            return customId;
+        } else {
+            const docRef = await addDoc(collection(db, 'notes'), {
+                ...noteData,
+                userId,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            return docRef.id;
+        }
     }
 
     async getNotes(userId: string) {

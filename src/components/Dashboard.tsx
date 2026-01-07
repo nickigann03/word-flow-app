@@ -93,25 +93,36 @@ export function Dashboard() {
             return;
         }
 
-        const toastId = toast.loading('Creating Note', 'Setting up new document...');
-        try {
-            const newNote = {
-                title: 'Untitled Note',
-                content: templateContent,
-                folderId: selectedFolder === 'recent' || selectedFolder === 'all' ? null : selectedFolder,
-                tags: []
-            };
-            const id = await firestoreService.createNote(user.uid, newNote);
-            const note = { id, ...newNote, userId: user.uid, tags: [] };
+        // Optimistic UI Update
+        const newId = firestoreService.getNewNoteId();
+        const newNote = {
+            id: newId,
+            title: 'Untitled Note',
+            content: templateContent,
+            folderId: selectedFolder === 'recent' || selectedFolder === 'all' ? null : selectedFolder,
+            tags: [],
+            userId: user.uid,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
 
-            setNotes([note, ...notes]);
-            setSelectedNote(note);
-            setView('editor');
-            toast.updateToast(toastId, { title: 'Note Created', message: 'Started a new note', type: 'success' });
-        } catch (error) {
-            console.error('Failed to create note:', error);
-            toast.updateToast(toastId, { title: 'Creation Failed', message: (error as Error).message || 'Could not create new note', type: 'error' });
-        }
+        // 1. Instant UI Update
+        setNotes([newNote, ...notes]);
+        setSelectedNote(newNote);
+        setView('editor');
+
+        // 2. Background Sync
+        firestoreService.createNote(user.uid, newNote, newId)
+            .catch(error => {
+                console.error('Failed to create note in background:', error);
+                toast.error('Sync Failed', 'Could not save note to server');
+                // Revert optimistic update
+                setNotes(prev => prev.filter(n => n.id !== newId));
+                if (selectedNote?.id === newId) {
+                    setSelectedNote(null);
+                    setView('list');
+                }
+            });
     };
 
     const handleSaveNote = async (updated: Note) => {
@@ -135,17 +146,27 @@ export function Dashboard() {
     const handleDeleteNote = async (noteId: string) => {
         if (!confirm("Are you sure you want to delete this note?")) return;
 
-        const toastId = toast.loading('Deleting Note', 'Removing note permanently...');
-        try {
-            await firestoreService.deleteNote(noteId);
-            setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+        // Optimistic UI Update
+        const previousNotes = [...notes];
+        setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+        if (selectedNote?.id === noteId) {
             setSelectedNote(null);
             setView('list');
-            toast.updateToast(toastId, { title: 'Note Deleted', message: 'Note has been removed', type: 'success' });
-        } catch (error) {
-            console.error('Failed to delete note:', error);
-            toast.updateToast(toastId, { title: 'Delete Failed', message: (error as Error).message || 'Could not delete the note', type: 'error' });
         }
+
+        // Background Sync
+        firestoreService.deleteNote(noteId)
+            .then(() => {
+                toast.success('Note Deleted', 'Note removed permanently');
+            })
+            .catch(error => {
+                console.error('Failed to delete note:', error);
+                toast.error('Delete Failed', 'Could not delete note from server');
+                // Rolling back state is tricky if other changes happened, 
+                // but usually better to just warn user than force-revert and confuse them.
+                // However, we can try to re-add it if we want to be strict.
+                setNotes(previousNotes); // Simple rollback
+            });
     };
 
     // Handler for inserting verses from Bible Reader or AI Chat
