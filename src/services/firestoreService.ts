@@ -11,7 +11,8 @@ import {
     getDocs,
     serverTimestamp,
     getDoc,
-    setDoc
+    setDoc,
+    onSnapshot
 } from 'firebase/firestore';
 
 export interface Note {
@@ -125,6 +126,39 @@ class FirestoreService {
         );
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note));
+    }
+
+    // --- Subscriptions ---
+    subscribeFolders(userId: string, onData: (folders: Folder[]) => void) {
+        const q = query(
+            collection(db, 'folders'),
+            where('userId', '==', userId),
+            orderBy('createdAt', 'desc')
+        );
+        return onSnapshot(q, (snapshot) => {
+            onData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Folder)));
+        });
+    }
+
+    subscribeNotes(userId: string, folderId: string | null, onData: (notes: Note[]) => void) {
+        let q;
+        if (folderId === 'recent' || folderId === 'all' || !folderId) {
+            q = query(
+                collection(db, 'notes'),
+                where('userId', '==', userId),
+                orderBy('createdAt', 'desc')
+            );
+        } else {
+            q = query(
+                collection(db, 'notes'),
+                where('folderId', '==', folderId),
+                orderBy('createdAt', 'desc')
+            );
+        }
+
+        return onSnapshot(q, (snapshot) => {
+            onData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
+        });
     }
 
     async updateNote(noteId: string, data: any) {

@@ -21,6 +21,15 @@ export function Dashboard() {
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
     const [view, setView] = useState<'list' | 'editor' | 'templates'>('list');
 
+    // Update current note content when note changes
+    useEffect(() => {
+        if (selectedNote) {
+            setCurrentNoteContent(selectedNote.content || '');
+        } else {
+            setCurrentNoteContent('');
+        }
+    }, [selectedNote]);
+
     // Panel states
     const [isBibleOpen, setIsBibleOpen] = useState(false);
     const [isAIChatOpen, setIsAIChatOpen] = useState(false);
@@ -37,54 +46,39 @@ export function Dashboard() {
     // Track current note content for AI context
     const [currentNoteContent, setCurrentNoteContent] = useState<string>('');
 
+    // Subscribe to Folders
     useEffect(() => {
-        if (user?.uid) {
-            loadFolders();
-            loadNotes('recent');
+        if (!user?.uid) {
+            setFolders([]);
+            return;
         }
+
+        const unsubscribe = firestoreService.subscribeFolders(user.uid, (data) => {
+            setFolders(data);
+        });
+        return () => unsubscribe();
     }, [user]);
 
-    // Update current note content when note changes
+    // Subscribe to Notes based on selected folder
     useEffect(() => {
-        if (selectedNote) {
-            setCurrentNoteContent(selectedNote.content || '');
-        } else {
-            setCurrentNoteContent('');
+        if (!user?.uid) {
+            setNotes([]);
+            return;
         }
-    }, [selectedNote]);
 
-    async function loadFolders() {
-        if (!user) return;
-        try {
-            const data = await firestoreService.getFolders(user.uid);
-            setFolders(data);
-        } catch (error) {
-            console.error('Failed to load folders:', error);
-            toast.error('Sync Error', `Failed to load folders: ${(error as Error).message}`);
-        }
-    }
-
-    async function loadNotes(folderId: string) {
-        if (!user) return;
-        try {
-            let data;
-            if (folderId === 'recent' || folderId === 'all') {
-                data = await firestoreService.getNotes(user.uid);
-            } else {
-                data = await firestoreService.getNotesByFolder(folderId);
-            }
+        const folderToQuery = selectedFolder === 'recent' || selectedFolder === 'all' ? selectedFolder : selectedFolder;
+        // Logic inside service handles 'recent'/'all' vs specific ID
+        const unsubscribe = firestoreService.subscribeNotes(user.uid, folderToQuery, (data) => {
             setNotes(data);
-        } catch (error) {
-            console.error('Failed to load notes:', error);
-            toast.error('Sync Error', `Failed to load notes: ${(error as Error).message}`);
-        }
-    }
+        });
+        return () => unsubscribe();
+    }, [user, selectedFolder]);
 
     const handleSelectFolder = (id: string) => {
         setSelectedFolder(id);
         setSelectedNote(null);
         setView('list');
-        loadNotes(id);
+        // No need to call loadNotes, the useEffect above will trigger due to selectedFolder change
     };
 
     const handleCreateNote = async (templateContent = '') => {
@@ -106,22 +100,16 @@ export function Dashboard() {
             updatedAt: new Date()
         };
 
-        // 1. Instant UI Update
-        setNotes([newNote, ...notes]);
+        // We still set view/selection immediately to ensure smooth transition
+        // The notes list update will come from the subscription instantly
         setSelectedNote(newNote);
         setView('editor');
 
-        // 2. Background Sync
+        // Background Sync
         firestoreService.createNote(user.uid, newNote, newId)
             .catch(error => {
                 console.error('Failed to create note in background:', error);
                 toast.error('Sync Failed', 'Could not save note to server');
-                // Revert optimistic update
-                setNotes(prev => prev.filter(n => n.id !== newId));
-                if (selectedNote?.id === newId) {
-                    setSelectedNote(null);
-                    setView('list');
-                }
             });
     };
 
@@ -154,18 +142,18 @@ export function Dashboard() {
             setView('list');
         }
 
-        // Background Sync
+        // Background Sync (Subscription handles UI removal instantly)
         firestoreService.deleteNote(noteId)
             .then(() => {
                 toast.success('Note Deleted', 'Note removed permanently');
+                if (selectedNote?.id === noteId) {
+                    setSelectedNote(null);
+                    setView('list');
+                }
             })
             .catch(error => {
                 console.error('Failed to delete note:', error);
                 toast.error('Delete Failed', 'Could not delete note from server');
-                // Rolling back state is tricky if other changes happened, 
-                // but usually better to just warn user than force-revert and confuse them.
-                // However, we can try to re-add it if we want to be strict.
-                setNotes(previousNotes); // Simple rollback
             });
     };
 
@@ -311,21 +299,15 @@ export function Dashboard() {
                         const newId = firestoreService.getNewFolderId();
                         const newFolder: Folder = { id: newId, title: createFolderName, userId: user.uid, createdAt: new Date() };
 
-                        // 1. Instant UI Update
-                        setFolders(prev => [newFolder, ...prev]);
+
+                        // 1. Instant UI Update handled by onSnapshot
                         setIsCreateFolderOpen(false);
 
                         // 2. Background Sync
-                        // We don't await this for the UI feedback, but we catch errors
                         firestoreService.createFolder(user.uid, { title: createFolderName }, newId)
-                            .then(() => {
-                                // Silent success or subtle toast if desired, but user already sees it "done"
-                            })
                             .catch(e => {
                                 console.error('Folder sync failed', e);
                                 toast.error('Sync Failed', 'Could not save folder to server');
-                                // Revert optimistic update
-                                setFolders(prev => prev.filter(f => f.id !== newId));
                             });
                     }}
                     className="space-y-4"
@@ -384,7 +366,6 @@ export function Dashboard() {
                                 const toastId = toast.loading('Deleting Folder...');
                                 try {
                                     await firestoreService.deleteFolder(folderToDelete);
-                                    loadFolders();
                                     if (selectedFolder === folderToDelete) setSelectedFolder('recent');
                                     toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
                                     setFolderToDelete(null);
