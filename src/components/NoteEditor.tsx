@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
+import bibleService from '@/services/bibleService';
 import audioRecorderService from '@/services/audioRecorderService';
 import { Note } from '@/services/firestoreService';
 
@@ -195,6 +196,35 @@ const slashCommands: SlashCommand[] = [
         },
         category: 'Media'
     },
+    // Bible
+    {
+        title: 'Full Book',
+        description: 'Insert entire Bible book (e.g., Genesis)',
+        icon: <BookOpen className="w-4 h-4 text-amber-400" />,
+        command: async (editor) => {
+            const bookName = prompt("Enter Bible book name (e.g., Genesis, Numbers, John):");
+            if (!bookName) return;
+
+            editor.commands.insertContent(`<p><em>Loading ${bookName}...</em></p>`);
+
+            try {
+                const bookHtml = await bibleService.getFullBook(bookName);
+                // Replace loading text
+                const currentContent = editor.getHTML();
+                const newContent = currentContent.replace(`<p><em>Loading ${bookName}...</em></p>`, bookHtml);
+                editor.commands.setContent(newContent);
+            } catch (error) {
+                console.error('Failed to load book:', error);
+                const currentContent = editor.getHTML();
+                const newContent = currentContent.replace(
+                    `<p><em>Loading ${bookName}...</em></p>`,
+                    `<p><em>Failed to load ${bookName}. Please check the book name.</em></p>`
+                );
+                editor.commands.setContent(newContent);
+            }
+        },
+        category: 'Bible'
+    },
 ];
 
 export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, onInsertComplete }: NoteEditorProps) {
@@ -327,6 +357,61 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                 class: 'prose prose-zinc dark:prose-invert max-w-none focus:outline-none min-h-[500px] outline-none font-sans pl-8 pr-8 py-8',
             },
             handleKeyDown: (view, event) => {
+                // Handle "Book (full)" pattern on Enter
+                if (event.key === 'Enter' && !showSlashMenu) {
+                    const { state } = view;
+                    const { selection } = state;
+                    const $pos = state.doc.resolve(selection.from);
+
+                    // Get current line text
+                    const lineStart = $pos.start();
+                    const lineEnd = selection.from;
+                    const lineText = state.doc.textBetween(lineStart, lineEnd, ' ').trim();
+
+                    // Check for "Book (full)" pattern
+                    const fullBookMatch = lineText.match(/^([a-zA-Z0-9\s]+)\s*\(full\)$/i);
+                    if (fullBookMatch) {
+                        event.preventDefault();
+                        const bookName = fullBookMatch[1].trim();
+
+                        // Delete the current line content
+                        const tr = state.tr.delete(lineStart, lineEnd);
+                        view.dispatch(tr);
+
+                        // Insert loading message
+                        editor?.commands.insertContent(`<p><em>Loading ${bookName}... (this may take a moment for large books)</em></p>`);
+
+                        // Fetch and insert the book
+                        (async () => {
+                            try {
+                                const bookHtml = await bibleService.getFullBook(bookName);
+                                if (editor) {
+                                    const currentContent = editor.getHTML();
+                                    const newContent = currentContent.replace(
+                                        `<p><em>Loading ${bookName}... (this may take a moment for large books)</em></p>`,
+                                        `<h1>${bookName} (ESV)</h1>\n${bookHtml}`
+                                    );
+                                    editor.commands.setContent(newContent);
+                                    toast.success('Book Loaded', `${bookName} has been inserted`);
+                                }
+                            } catch (error) {
+                                console.error('Failed to load book:', error);
+                                if (editor) {
+                                    const currentContent = editor.getHTML();
+                                    const newContent = currentContent.replace(
+                                        `<p><em>Loading ${bookName}... (this may take a moment for large books)</em></p>`,
+                                        `<p><em>Failed to load "${bookName}". Please check the book name and try again.</em></p>`
+                                    );
+                                    editor.commands.setContent(newContent);
+                                    toast.error('Load Failed', `Could not load ${bookName}`);
+                                }
+                            }
+                        })();
+
+                        return true;
+                    }
+                }
+
                 // Handle slash commands
                 if (event.key === '/') {
                     const { state } = view;

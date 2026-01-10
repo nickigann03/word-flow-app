@@ -277,7 +277,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
                                     {renderMessageContent(msg.content)}
                                 </div>
                             ) : (
-                                <p className="text-sm">{msg.content}</p>
+                                <div className="text-sm leading-relaxed whitespace-pre-wrap">{renderMessageContent(msg.content)}</div>
                             )}
 
                             {/* Bible References */}

@@ -333,6 +333,51 @@ class BibleService {
     }
 
     /**
+     * Fetch an entire book with formatted chapters
+     * Returns HTML-formatted text with chapter headings and verse numbers
+     */
+    async getFullBook(bookName: string, translation: BibleVersionId = 'esv'): Promise<string> {
+        const book = BIBLE_BOOKS.find(b =>
+            b.name.toLowerCase() === bookName.toLowerCase() ||
+            b.id.toLowerCase() === bookName.toLowerCase()
+        );
+
+        if (!book) {
+            throw new Error(`Book "${bookName}" not found`);
+        }
+
+        const chapters: string[] = [];
+
+        // Fetch all chapters
+        for (let i = 1; i <= book.chapters; i++) {
+            try {
+                const chapterData = await this.getChapter(book.name, i, translation);
+
+                // Format chapter header
+                let chapterHtml = `<h2>${book.name} ${i}</h2>\n`;
+
+                // Format verses
+                if (chapterData.verses && chapterData.verses.length > 0) {
+                    // Individual verses available
+                    chapterData.verses.forEach(v => {
+                        chapterHtml += `<sup>${v.verse}</sup> ${v.text} `;
+                    });
+                } else if (chapterData.text) {
+                    // Plain text format
+                    chapterHtml += `<p>${chapterData.text}</p>`;
+                }
+
+                chapters.push(chapterHtml);
+            } catch (error) {
+                console.error(`Failed to fetch ${book.name} ${i}:`, error);
+                chapters.push(`<h2>${book.name} ${i}</h2>\n<p><em>Failed to load chapter</em></p>`);
+            }
+        }
+
+        return chapters.join('\n\n');
+    }
+
+    /**
      * Search for verses containing a term (basic search via API)
      */
     async searchVerses(query: string, translation: BibleVersionId = 'kjv'): Promise<BibleVerse[]> {
