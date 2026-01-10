@@ -260,9 +260,14 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     // Table Menu State
     const [showTableMenu, setShowTableMenu] = useState(false);
 
-    // Tabs State - for multi-page notes like Google Docs
-    const [tabs, setTabs] = useState<{ id: string; title: string; content: string }[]>(
-        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '' }]
+    // Tabs State - for multi-page notes like Google Docs (with per-tab page settings)
+    const [tabs, setTabs] = useState<{
+        id: string;
+        title: string;
+        content: string;
+        pageSettings?: { orientation: 'portrait' | 'landscape'; marginSize: 'normal' | 'narrow' | 'wide' };
+    }[]>(
+        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '', pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal' } }]
     );
     const [activeTabId, setActiveTabId] = useState(note.tabs?.[0]?.id || 'main');
     const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -281,14 +286,28 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const [resizingBoxId, setResizingBoxId] = useState<string | null>(null);
     const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
 
-    // Page Settings State
-    const [pageOrientation, setPageOrientation] = useState<'portrait' | 'landscape'>(
-        note.pageSettings?.orientation || 'portrait'
-    );
-    const [marginSize, setMarginSize] = useState<'normal' | 'narrow' | 'wide'>(
-        note.pageSettings?.marginSize || 'normal'
-    );
+    // Page Settings State - derived from active tab
+    const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+    const pageOrientation = activeTab?.pageSettings?.orientation || 'portrait';
+    const marginSize = activeTab?.pageSettings?.marginSize || 'normal';
     const [showPageSettings, setShowPageSettings] = useState(false);
+
+    // Update page settings for current tab
+    const setPageOrientation = (orientation: 'portrait' | 'landscape') => {
+        setTabs(prev => prev.map(t =>
+            t.id === activeTabId
+                ? { ...t, pageSettings: { ...t.pageSettings, orientation, marginSize: t.pageSettings?.marginSize || 'normal' } }
+                : t
+        ));
+    };
+
+    const setMarginSize = (size: 'normal' | 'narrow' | 'wide') => {
+        setTabs(prev => prev.map(t =>
+            t.id === activeTabId
+                ? { ...t, pageSettings: { orientation: t.pageSettings?.orientation || 'portrait', marginSize: size } }
+                : t
+        ));
+    };
 
     // Highlighter Color State
     const [highlighterColor, setHighlighterColor] = useState('#ffff00');
@@ -633,7 +652,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         saveTimeoutRef.current = setTimeout(() => {
             const { note, title, onSave } = performSaveRef.current;
             if (editor) {
-                // Update current tab content before saving
+                // Update current tab content and page settings before saving
+                const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
                 const updatedTabs = tabs.map(t =>
                     t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
                 );
@@ -643,7 +663,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     content: editor.getHTML(),
                     tabs: updatedTabs,
                     floatingBoxes: floatingBoxes,
-                    pageSettings: { orientation: pageOrientation, marginSize: marginSize }
+                    pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' }
                 });
             }
         }, 1000);
@@ -718,7 +738,12 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const addNewTab = () => {
         saveCurrentTabContent();
         const newTabId = `tab-${Date.now()}`;
-        const newTab = { id: newTabId, title: `Page ${tabs.length + 1}`, content: '' };
+        const newTab = {
+            id: newTabId,
+            title: `Page ${tabs.length + 1}`,
+            content: '',
+            pageSettings: { orientation: 'portrait' as const, marginSize: 'normal' as const }
+        };
         setTabs(prev => [...prev, newTab]);
         setActiveTabId(newTabId);
         if (editor) {
@@ -1114,6 +1139,32 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive({ textAlign: 'justify' }) && "text-blue-400 bg-blue-500/10")} title="Justify"><AlignJustify className="w-4 h-4" /></button>
                     </div>
 
+                    {/* Indent Controls - Left/Right margin adjustment */}
+                    <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button
+                            onClick={() => {
+                                const currentIndent = editor.getAttributes('paragraph').indent || 0;
+                                const newIndent = Math.max(0, currentIndent - 24);
+                                editor.chain().focus().updateAttributes('paragraph', { indent: newIndent }).run();
+                            }}
+                            className="p-1.5 hover:bg-zinc-800 rounded transition-colors text-zinc-400 hover:text-white"
+                            title="Decrease Indent (Shift+Tab)"
+                        >
+                            <IndentIcon className="w-4 h-4 rotate-180" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                const currentIndent = editor.getAttributes('paragraph').indent || 0;
+                                const newIndent = Math.min(240, currentIndent + 24);
+                                editor.chain().focus().updateAttributes('paragraph', { indent: newIndent }).run();
+                            }}
+                            className="p-1.5 hover:bg-zinc-800 rounded transition-colors text-zinc-400 hover:text-white"
+                            title="Increase Indent (Tab)"
+                        >
+                            <IndentIcon className="w-4 h-4" />
+                        </button>
+                    </div>
+
                     {/* Text Colors */}
                     <div className="flex items-center gap-1 border-r border-zinc-700/50 pr-2 mr-1">
                         <button onClick={() => editor.chain().focus().setColor('#f87171').run()} className={cn("w-4 h-4 rounded-full bg-red-400 hover:scale-110 transition-transform ring-offset-1 ring-offset-zinc-900", editor.isActive('textStyle', { color: '#f87171' }) && "ring-2 ring-white")} title="Red" />
@@ -1134,7 +1185,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                             <ChevronDown className="w-2 h-2" />
                         </button>
                         {showHighlighterPicker && (
-                            <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
+                            <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
                                 <div className="flex gap-1">
                                     <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-yellow-400 hover:scale-110 transition-transform" title="Yellow" />
                                     <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-green-400 hover:scale-110 transition-transform" title="Green" />

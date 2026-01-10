@@ -19,6 +19,10 @@ export interface NoteTab {
     id: string;
     title: string;
     content: string;
+    pageSettings?: {
+        orientation: 'portrait' | 'landscape';
+        marginSize: 'normal' | 'narrow' | 'wide';
+    };
 }
 
 export interface FloatingBox {
