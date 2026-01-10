@@ -7,6 +7,7 @@ import {
     Settings,
     LogOut,
     ChevronRight,
+    ChevronDown,
     Trash2,
     BookOpen,
     MessageSquareText,
@@ -48,6 +49,7 @@ export function Sidebar({
 }: SidebarProps) {
     const { user, logout } = useAuth();
     const [search, setSearch] = useState('');
+    const [isFoldersOpen, setIsFoldersOpen] = useState(true);
 
     const NavItem = ({ icon: Icon, label, id }: { icon: any, label: string, id: string }) => (
         <button
@@ -127,16 +129,30 @@ export function Sidebar({
                     </div>
                 </div>
 
+
                 <div>
                     {!isCollapsed && (
-                        <div className="flex items-center justify-between px-3 mb-2">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                                Folders
+                        <button
+                            onClick={() => setIsFoldersOpen(!isFoldersOpen)}
+                            className="flex items-center justify-between w-full px-3 mb-2 group hover:bg-zinc-800/50 rounded-md py-1"
+                        >
+                            <div className="flex items-center gap-2">
+                                <ChevronDown className={cn(
+                                    "w-3 h-3 text-zinc-500 transition-transform",
+                                    !isFoldersOpen && "-rotate-90"
+                                )} />
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-zinc-400">
+                                    Folders ({folders.length})
+                                </span>
                             </div>
-                            <button onClick={onCreateFolder} className="text-zinc-500 hover:text-white transition-colors">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                className="text-zinc-500 hover:text-white transition-colors p-0.5"
+                                title="New folder"
+                            >
                                 <Plus className="w-3.5 h-3.5" />
                             </button>
-                        </div>
+                        </button>
                     )}
                     {isCollapsed && (
                         <div className="flex justify-center mb-2">
@@ -145,32 +161,34 @@ export function Sidebar({
                             </button>
                         </div>
                     )}
-                    <div className="space-y-0.5">
-                        {folders.map(folder => (
-                            <div key={folder.id} className="relative group">
-                                <NavItem
-                                    icon={FolderIcon}
-                                    label={folder.title}
-                                    id={folder.id!}
-                                />
-                                {onDeleteFolder && !isCollapsed && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onDeleteFolder(folder.id!);
-                                        }}
-                                        className="absolute right-2 top-1.5 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Delete Folder"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                        {folders.length === 0 && !isCollapsed && (
-                            <div className="px-3 py-2 text-xs italic text-zinc-700">No folders yet</div>
-                        )}
-                    </div>
+                    {(isFoldersOpen || isCollapsed) && (
+                        <div className="space-y-0.5">
+                            {folders.map(folder => (
+                                <div key={folder.id} className="relative group">
+                                    <NavItem
+                                        icon={FolderIcon}
+                                        label={folder.title}
+                                        id={folder.id!}
+                                    />
+                                    {onDeleteFolder && !isCollapsed && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onDeleteFolder(folder.id!);
+                                            }}
+                                            className="absolute right-2 top-1.5 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Delete Folder"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                            {folders.length === 0 && !isCollapsed && (
+                                <div className="px-3 py-2 text-xs italic text-zinc-700">No folders yet</div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Tools Section */}

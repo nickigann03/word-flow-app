@@ -260,6 +260,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     // Table Menu State
     const [showTableMenu, setShowTableMenu] = useState(false);
 
+    // Tabs State - for multi-page notes like Google Docs
+    const [tabs, setTabs] = useState<{ id: string; title: string; content: string }[]>(
+        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '' }]
+    );
+    const [activeTabId, setActiveTabId] = useState(note.tabs?.[0]?.id || 'main');
+    const [editingTabId, setEditingTabId] = useState<string | null>(null);
+
     const editorRef = useRef<HTMLDivElement>(null);
 
     // Auto-save refs
@@ -599,10 +606,19 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         saveTimeoutRef.current = setTimeout(() => {
             const { note, title, onSave } = performSaveRef.current;
             if (editor) {
-                onSave({ ...note, title, content: editor.getHTML() });
+                // Update current tab content before saving
+                const updatedTabs = tabs.map(t =>
+                    t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+                );
+                onSave({
+                    ...note,
+                    title,
+                    content: editor.getHTML(),
+                    tabs: updatedTabs
+                });
             }
         }, 1000);
-    }, [editor]);
+    }, [editor, tabs, activeTabId]);
 
     useEffect(() => {
         onUpdateTrigger.current = triggerSave;
@@ -644,6 +660,72 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Tab management functions
+    const getCurrentTab = () => tabs.find(t => t.id === activeTabId) || tabs[0];
+
+    const saveCurrentTabContent = () => {
+        if (editor) {
+            setTabs(prev => prev.map(t =>
+                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+            ));
+        }
+    };
+
+    const switchToTab = (tabId: string) => {
+        if (tabId === activeTabId) return;
+
+        // Save current tab content first
+        saveCurrentTabContent();
+
+        // Switch to new tab
+        setActiveTabId(tabId);
+        const newTab = tabs.find(t => t.id === tabId);
+        if (newTab && editor) {
+            editor.commands.setContent(newTab.content || '');
+        }
+    };
+
+    const addNewTab = () => {
+        saveCurrentTabContent();
+        const newTabId = `tab-${Date.now()}`;
+        const newTab = { id: newTabId, title: `Page ${tabs.length + 1}`, content: '' };
+        setTabs(prev => [...prev, newTab]);
+        setActiveTabId(newTabId);
+        if (editor) {
+            editor.commands.setContent('');
+        }
+    };
+
+    const deleteTab = (tabId: string) => {
+        if (tabs.length <= 1) {
+            toast.error('Cannot Delete', 'You must have at least one page');
+            return;
+        }
+
+        const tabIndex = tabs.findIndex(t => t.id === tabId);
+        const newTabs = tabs.filter(t => t.id !== tabId);
+        setTabs(newTabs);
+
+        if (activeTabId === tabId) {
+            // Switch to adjacent tab
+            const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
+            const newActiveTab = newTabs[newActiveIndex];
+            setActiveTabId(newActiveTab.id);
+            if (editor) {
+                editor.commands.setContent(newActiveTab.content || '');
+            }
+        }
+    };
+
+    const renameTab = (tabId: string, newTitle: string) => {
+        setTabs(prev => prev.map(t =>
+            t.id === tabId ? { ...t, title: newTitle } : t
+        ));
+        setEditingTabId(null);
+    };
+
+    // Override triggerSave to include tabs
 
     // Format duration as MM:SS
     const formatDuration = (seconds: number) => {
@@ -861,6 +943,72 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {onDelete && <><div className="h-4 w-px bg-zinc-800 mx-1" /><button onClick={onDelete} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors" title="Delete Note"><Trash className="w-4 h-4" /></button></>}
                 </div>
             </div>
+
+            {/* Tabs Bar - Google Docs style */}
+            {tabs.length > 0 && (
+                <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-4 bg-zinc-900/50 overflow-x-auto custom-scrollbar">
+                    {tabs.map((tab, index) => (
+                        <div
+                            key={tab.id}
+                            className={cn(
+                                "group flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-xs font-medium cursor-pointer transition-all relative",
+                                activeTabId === tab.id
+                                    ? "bg-zinc-950 text-white border-t border-x border-zinc-700"
+                                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                            )}
+                            onClick={() => switchToTab(tab.id)}
+                        >
+                            {editingTabId === tab.id ? (
+                                <input
+                                    type="text"
+                                    defaultValue={tab.title}
+                                    className="bg-transparent border-b border-zinc-500 focus:outline-none w-20 text-xs"
+                                    autoFocus
+                                    onBlur={(e) => renameTab(tab.id, e.target.value || tab.title)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            renameTab(tab.id, e.currentTarget.value || tab.title);
+                                        }
+                                        if (e.key === 'Escape') {
+                                            setEditingTabId(null);
+                                        }
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <span
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingTabId(tab.id);
+                                    }}
+                                    title="Double-click to rename"
+                                >
+                                    {tab.title}
+                                </span>
+                            )}
+                            {tabs.length > 1 && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteTab(tab.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-zinc-700 rounded text-zinc-400 hover:text-red-400 transition-all"
+                                    title="Delete page"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                    <button
+                        onClick={addNewTab}
+                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                        title="Add new page"
+                    >
+                        <Plus className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            )}
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto" ref={editorRef}>

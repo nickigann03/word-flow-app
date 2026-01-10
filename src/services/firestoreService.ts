@@ -15,12 +15,19 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 
+export interface NoteTab {
+    id: string;
+    title: string;
+    content: string;
+}
+
 export interface Note {
     id?: string;
     userId: string;
     folderId: string | null;
     title: string;
     content: string;
+    tabs?: NoteTab[];  // Optional tabs for multi-page notes
     tags: string[];
     createdAt?: any;
     updatedAt?: any;
