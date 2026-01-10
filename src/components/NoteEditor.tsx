@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useEditor, EditorContent, BubbleMenu, FloatingMenu } from '@tiptap/react';
+import { useEditor, EditorContent, FloatingMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -992,8 +992,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
     return (
         <div className="flex flex-col h-full bg-zinc-950 relative">
-            {/* Toolbar */}
-            <div className="h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950/80 backdrop-blur sticky top-0 z-10 shrink-0">
+            {/* Main Toolbar */}
+            <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur sticky top-0 z-10 shrink-0">
                 <div className="flex items-center gap-1">
                     {isSermonRecording && (
                         <span className="flex items-center gap-2 px-2 py-1 bg-red-500/10 rounded-full">
@@ -1085,6 +1085,99 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {onDelete && <><div className="h-4 w-px bg-zinc-800 mx-1" /><button onClick={onDelete} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors" title="Delete Note"><Trash className="w-4 h-4" /></button></>}
                 </div>
             </div>
+
+            {/* Formatting Ribbon - Google Docs Style */}
+            {editor && (
+                <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-4 bg-zinc-900/95 backdrop-blur sticky top-12 z-10 shrink-0 overflow-x-auto custom-scrollbar">
+                    {/* Text formatting */}
+                    <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button onClick={() => editor.chain().focus().toggleBold().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('bold') && "text-blue-400 bg-blue-500/10")} title="Bold (Ctrl+B)"><Bold className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('italic') && "text-blue-400 bg-blue-500/10")} title="Italic (Ctrl+I)"><Italic className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('underline') && "text-blue-400 bg-blue-500/10")} title="Underline (Ctrl+U)"><UnderlineIcon className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('subscript') && "text-blue-400 bg-blue-500/10")} title="Subscript"><SubIcon className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('superscript') && "text-blue-400 bg-blue-500/10")} title="Superscript"><SupIcon className="w-4 h-4" /></button>
+                    </div>
+
+                    {/* Font Size */}
+                    <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button onClick={() => editor.chain().focus().setFontSize('12px').run()} className={cn("px-1.5 py-1 text-xs hover:bg-zinc-800 rounded text-zinc-400 transition-colors", editor.isActive('textStyle', { fontSize: '12px' }) && "text-white bg-zinc-800")} title="Small">S</button>
+                        <button onClick={() => editor.chain().focus().unsetFontSize().run()} className={cn("px-1.5 py-1 text-sm hover:bg-zinc-800 rounded text-zinc-300 transition-colors", !editor.isActive('textStyle', { fontSize: '12px' }) && !editor.isActive('textStyle', { fontSize: '20px' }) && !editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")} title="Medium">M</button>
+                        <button onClick={() => editor.chain().focus().setFontSize('20px').run()} className={cn("px-1.5 py-1 text-lg hover:bg-zinc-800 rounded text-zinc-200 transition-colors", editor.isActive('textStyle', { fontSize: '20px' }) && "text-white bg-zinc-800")} title="Large">L</button>
+                        <button onClick={() => editor.chain().focus().setFontSize('28px').run()} className={cn("px-1.5 py-1 text-xl hover:bg-zinc-800 rounded text-zinc-100 transition-colors", editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")} title="Extra Large">XL</button>
+                    </div>
+
+                    {/* Alignment */}
+                    <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive({ textAlign: 'left' }) && "text-blue-400 bg-blue-500/10")} title="Align Left"><AlignLeft className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive({ textAlign: 'center' }) && "text-blue-400 bg-blue-500/10")} title="Align Center"><AlignCenter className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive({ textAlign: 'right' }) && "text-blue-400 bg-blue-500/10")} title="Align Right"><AlignRight className="w-4 h-4" /></button>
+                        <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive({ textAlign: 'justify' }) && "text-blue-400 bg-blue-500/10")} title="Justify"><AlignJustify className="w-4 h-4" /></button>
+                    </div>
+
+                    {/* Text Colors */}
+                    <div className="flex items-center gap-1 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button onClick={() => editor.chain().focus().setColor('#f87171').run()} className={cn("w-4 h-4 rounded-full bg-red-400 hover:scale-110 transition-transform ring-offset-1 ring-offset-zinc-900", editor.isActive('textStyle', { color: '#f87171' }) && "ring-2 ring-white")} title="Red" />
+                        <button onClick={() => editor.chain().focus().setColor('#60a5fa').run()} className={cn("w-4 h-4 rounded-full bg-blue-400 hover:scale-110 transition-transform ring-offset-1 ring-offset-zinc-900", editor.isActive('textStyle', { color: '#60a5fa' }) && "ring-2 ring-white")} title="Blue" />
+                        <button onClick={() => editor.chain().focus().setColor('#facc15').run()} className={cn("w-4 h-4 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-offset-1 ring-offset-zinc-900", editor.isActive('textStyle', { color: '#facc15' }) && "ring-2 ring-white")} title="Yellow" />
+                        <button onClick={() => editor.chain().focus().setColor('#4ade80').run()} className={cn("w-4 h-4 rounded-full bg-green-400 hover:scale-110 transition-transform ring-offset-1 ring-offset-zinc-900", editor.isActive('textStyle', { color: '#4ade80' }) && "ring-2 ring-white")} title="Green" />
+                        <button onClick={() => editor.chain().focus().unsetColor().run()} className="text-[10px] text-zinc-500 hover:text-white px-1" title="Remove Color">×</button>
+                    </div>
+
+                    {/* Highlighter with color picker */}
+                    <div className="relative border-r border-zinc-700/50 pr-2 mr-1">
+                        <button
+                            onClick={() => setShowHighlighterPicker(!showHighlighterPicker)}
+                            className={cn("p-1.5 hover:bg-zinc-800 rounded flex items-center gap-0.5 transition-colors", editor.isActive('highlight') && "text-amber-400 bg-amber-500/10")}
+                            title="Highlight"
+                        >
+                            <Highlighter className="w-4 h-4" />
+                            <ChevronDown className="w-2 h-2" />
+                        </button>
+                        {showHighlighterPicker && (
+                            <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
+                                <div className="flex gap-1">
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-yellow-400 hover:scale-110 transition-transform" title="Yellow" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-green-400 hover:scale-110 transition-transform" title="Green" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-cyan-400 hover:scale-110 transition-transform" title="Cyan" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-pink-400 hover:scale-110 transition-transform" title="Pink" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-orange-400 hover:scale-110 transition-transform" title="Orange" />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="color"
+                                        value={highlighterColor}
+                                        onChange={(e) => setHighlighterColor(e.target.value)}
+                                        className="w-5 h-5 cursor-pointer border-0 rounded"
+                                    />
+                                    <button
+                                        onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
+                                        className="text-xs text-zinc-400 hover:text-white"
+                                    >
+                                        Apply
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
+                                    className="text-xs text-zinc-500 hover:text-white text-center"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Circle and Comment */}
+                    <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
+                        <button onClick={() => editor.chain().focus().toggleCircle().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('circle') && "text-red-400 bg-red-500/10")} title="Circle Word"><Circle className="w-4 h-4" /></button>
+                        <button onClick={openCommentDialog} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('comment') && "text-blue-400 bg-blue-500/10")} title="Add Comment"><MessageSquarePlus className="w-4 h-4" /></button>
+                    </div>
+
+                    {/* Exegete */}
+                    <button onClick={handleExegete} className="px-2 py-1 hover:bg-zinc-800 rounded flex items-center gap-1.5 text-xs font-semibold text-purple-400 bg-purple-500/10 transition-colors" title="Theological lookup on selected text">
+                        <BookOpen className="w-3.5 h-3.5" /> Exegete
+                    </button>
+                </div>
+            )}
 
             {/* Tabs Bar - Google Docs style */}
             {tabs.length > 0 && (
@@ -1278,90 +1371,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         placeholder="Untitled Sermon"
                     />
 
-                    {editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex items-center gap-1 bg-zinc-900 border border-zinc-700 p-1.5 rounded-lg shadow-xl overflow-x-auto max-w-[90vw]">
-                        {/* Text formatting */}
-                        <div className="flex items-center gap-0.5 border-r border-zinc-800 pr-1">
-                            <button onClick={() => editor.chain().focus().toggleBold().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('bold') && "text-blue-400 bg-blue-500/10")} title="Bold"><Bold className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().toggleItalic().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('italic') && "text-blue-400 bg-blue-500/10")} title="Italic"><Italic className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('underline') && "text-blue-400 bg-blue-500/10")} title="Underline"><UnderlineIcon className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('subscript') && "text-blue-400 bg-blue-500/10")} title="Subscript"><SubIcon className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('superscript') && "text-blue-400 bg-blue-500/10")} title="Superscript"><SupIcon className="w-4 h-4" /></button>
-                        </div>
 
-                        {/* Font Size */}
-                        <div className="flex items-center gap-0.5 border-r border-zinc-800 px-1">
-                            <button onClick={() => editor.chain().focus().setFontSize('12px').run()} className={cn("px-1.5 py-1 text-xs hover:bg-zinc-800 rounded text-zinc-400", editor.isActive('textStyle', { fontSize: '12px' }) && "text-white bg-zinc-800")}>S</button>
-                            <button onClick={() => editor.chain().focus().unsetFontSize().run()} className={cn("px-1.5 py-1 text-sm hover:bg-zinc-800 rounded text-zinc-300", !editor.isActive('textStyle', { fontSize: '12px' }) && !editor.isActive('textStyle', { fontSize: '20px' }) && "text-white bg-zinc-800")}>M</button>
-                            <button onClick={() => editor.chain().focus().setFontSize('20px').run()} className={cn("px-1.5 py-1 text-lg hover:bg-zinc-800 rounded text-zinc-200", editor.isActive('textStyle', { fontSize: '20px' }) && "text-white bg-zinc-800")}>L</button>
-                            <button onClick={() => editor.chain().focus().setFontSize('28px').run()} className={cn("px-1.5 py-1 text-xl hover:bg-zinc-800 rounded text-zinc-100", editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")}>XL</button>
-                        </div>
-
-                        {/* Alignment - now with justify */}
-                        <div className="flex items-center gap-0.5 border-r border-zinc-800 px-1">
-                            <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'left' }) && "text-blue-400")} title="Align Left"><AlignLeft className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'center' }) && "text-blue-400")} title="Align Center"><AlignCenter className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'right' }) && "text-blue-400")} title="Align Right"><AlignRight className="w-4 h-4" /></button>
-                            <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive({ textAlign: 'justify' }) && "text-blue-400")} title="Justify"><AlignJustify className="w-4 h-4" /></button>
-                        </div>
-
-                        {/* Colors */}
-                        <div className="flex items-center gap-1 border-r border-zinc-800 px-1">
-                            <button onClick={() => editor.chain().focus().setColor('#f87171').run()} className={cn("w-3 h-3 rounded-full bg-red-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#f87171' }) && "ring-2 ring-white")} />
-                            <button onClick={() => editor.chain().focus().setColor('#60a5fa').run()} className={cn("w-3 h-3 rounded-full bg-blue-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#60a5fa' }) && "ring-2 ring-white")} />
-                            <button onClick={() => editor.chain().focus().setColor('#facc15').run()} className={cn("w-3 h-3 rounded-full bg-yellow-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#facc15' }) && "ring-2 ring-white")} />
-                            <button onClick={() => editor.chain().focus().setColor('#4ade80').run()} className={cn("w-3 h-3 rounded-full bg-green-400 hover:scale-110 transition-transform", editor.isActive('textStyle', { color: '#4ade80' }) && "ring-2 ring-white")} />
-                            <button onClick={() => editor.chain().focus().unsetColor().run()} className="text-[10px] text-zinc-500 hover:text-white">x</button>
-                        </div>
-
-                        {/* Advanced */}
-                        <div className="flex items-center gap-0.5 pl-1">
-                            {/* Highlighter with color picker */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowHighlighterPicker(!showHighlighterPicker)}
-                                    className={cn("p-1.5 hover:bg-zinc-800 rounded flex items-center gap-0.5", editor.isActive('highlight') && "text-amber-400")}
-                                    title="Highlight"
-                                >
-                                    <Highlighter className="w-4 h-4" />
-                                    <ChevronDown className="w-2 h-2" />
-                                </button>
-                                {showHighlighterPicker && (
-                                    <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
-                                        <div className="flex gap-1">
-                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-yellow-400 hover:scale-110 transition-transform" title="Yellow" />
-                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-green-400 hover:scale-110 transition-transform" title="Green" />
-                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-cyan-400 hover:scale-110 transition-transform" title="Cyan" />
-                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-pink-400 hover:scale-110 transition-transform" title="Pink" />
-                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-orange-400 hover:scale-110 transition-transform" title="Orange" />
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <input
-                                                type="color"
-                                                value={highlighterColor}
-                                                onChange={(e) => setHighlighterColor(e.target.value)}
-                                                className="w-5 h-5 cursor-pointer border-0 rounded"
-                                            />
-                                            <button
-                                                onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
-                                                className="text-xs text-zinc-400 hover:text-white"
-                                            >
-                                                Apply
-                                            </button>
-                                        </div>
-                                        <button
-                                            onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
-                                            className="text-xs text-zinc-500 hover:text-white text-center"
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                            <button onClick={() => editor.chain().focus().toggleCircle().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('circle') && "text-red-400")} title="Circle Word"><Circle className="w-4 h-4" /></button>
-                            <button onClick={openCommentDialog} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('comment') && "text-blue-400")} title="Add Comment"><MessageSquarePlus className="w-4 h-4" /></button>
-                            <button onClick={handleExegete} className="ml-1 p-1.5 hover:bg-zinc-800 rounded flex items-center gap-1 text-xs font-semibold text-purple-400 bg-purple-500/10"><BookOpen className="w-3 h-3" /> Exegete</button>
-                        </div>
-                    </BubbleMenu>}
 
                     {/* Floating Menu for new blocks */}
                     {editor && <FloatingMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex items-center gap-1 bg-zinc-900 border border-zinc-700 p-1 rounded-lg shadow-xl -ml-20">
