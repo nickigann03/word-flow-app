@@ -267,6 +267,20 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const [activeTabId, setActiveTabId] = useState(note.tabs?.[0]?.id || 'main');
     const [editingTabId, setEditingTabId] = useState<string | null>(null);
 
+    // Floating Text Boxes State
+    const [floatingBoxes, setFloatingBoxes] = useState<{
+        id: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        content: string;
+        color?: string;
+    }[]>(note.floatingBoxes || []);
+    const [draggingBoxId, setDraggingBoxId] = useState<string | null>(null);
+    const [resizingBoxId, setResizingBoxId] = useState<string | null>(null);
+    const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+
     const editorRef = useRef<HTMLDivElement>(null);
 
     // Auto-save refs
@@ -614,11 +628,12 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     ...note,
                     title,
                     content: editor.getHTML(),
-                    tabs: updatedTabs
+                    tabs: updatedTabs,
+                    floatingBoxes: floatingBoxes
                 });
             }
         }, 1000);
-    }, [editor, tabs, activeTabId]);
+    }, [editor, tabs, activeTabId, floatingBoxes]);
 
     useEffect(() => {
         onUpdateTrigger.current = triggerSave;
@@ -723,6 +738,67 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             t.id === tabId ? { ...t, title: newTitle } : t
         ));
         setEditingTabId(null);
+    };
+
+    // Floating Box Functions
+    const addFloatingBox = () => {
+        const newBox = {
+            id: `box-${Date.now()}`,
+            x: 50,  // Center horizontally (percentage)
+            y: 200, // 200px from top
+            width: 200,
+            height: 100,
+            content: '',
+            color: '#3b82f6'  // Blue default
+        };
+        setFloatingBoxes(prev => [...prev, newBox]);
+        setEditingBoxId(newBox.id);
+    };
+
+    const updateFloatingBox = (id: string, updates: Partial<typeof floatingBoxes[0]>) => {
+        setFloatingBoxes(prev => prev.map(box =>
+            box.id === id ? { ...box, ...updates } : box
+        ));
+    };
+
+    const deleteFloatingBox = (id: string) => {
+        setFloatingBoxes(prev => prev.filter(box => box.id !== id));
+    };
+
+    const handleBoxDragStart = (e: React.MouseEvent, boxId: string) => {
+        e.preventDefault();
+        setDraggingBoxId(boxId);
+        const box = floatingBoxes.find(b => b.id === boxId);
+        if (!box || !editorRef.current) return;
+
+        const rect = editorRef.current.getBoundingClientRect();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startBoxX = box.x;
+        const startBoxY = box.y;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const deltaX = moveEvent.clientX - startX;
+            const deltaY = moveEvent.clientY - startY;
+
+            // Calculate new position as percentage for X
+            const newX = startBoxX + (deltaX / rect.width) * 100;
+            const newY = startBoxY + deltaY;
+
+            updateFloatingBox(boxId, {
+                x: Math.max(0, Math.min(100, newX)),
+                y: Math.max(0, newY)
+            });
+        };
+
+        const handleMouseUp = () => {
+            setDraggingBoxId(null);
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
     };
 
     // Override triggerSave to include tabs
@@ -917,6 +993,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                 <div className="flex items-center gap-2">
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
                     <button onClick={handleExportPDF} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
+                    <button onClick={addFloatingBox} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Add Text Box"><Square className="w-4 h-4" /></button>
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
 
                     {/* Sermon Recording Button */}
@@ -1011,7 +1088,100 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             )}
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto" ref={editorRef}>
+            <div className="flex-1 overflow-y-auto relative" ref={editorRef}>
+                {/* Floating Text Boxes */}
+                {floatingBoxes.map(box => (
+                    <div
+                        key={box.id}
+                        className={cn(
+                            "absolute z-20 rounded-lg shadow-lg border-2 transition-shadow",
+                            draggingBoxId === box.id ? "cursor-grabbing shadow-2xl" : "cursor-grab",
+                            editingBoxId === box.id ? "ring-2 ring-blue-500" : ""
+                        )}
+                        style={{
+                            left: `${box.x}%`,
+                            top: box.y,
+                            width: box.width,
+                            minHeight: box.height,
+                            backgroundColor: box.color || '#3b82f6',
+                            borderColor: box.color || '#3b82f6',
+                            transform: 'translateX(-50%)'
+                        }}
+                    >
+                        {/* Drag Handle */}
+                        <div
+                            className="h-6 rounded-t-lg flex items-center justify-between px-2 cursor-grab"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}
+                            onMouseDown={(e) => handleBoxDragStart(e, box.id)}
+                        >
+                            <span className="text-[10px] font-medium text-white/70 select-none">Text Box</span>
+                            <div className="flex items-center gap-1">
+                                {/* Color picker */}
+                                <input
+                                    type="color"
+                                    value={box.color || '#3b82f6'}
+                                    onChange={(e) => updateFloatingBox(box.id, { color: e.target.value })}
+                                    className="w-4 h-4 cursor-pointer border-0 rounded"
+                                    title="Change color"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteFloatingBox(box.id);
+                                    }}
+                                    className="p-0.5 hover:bg-red-500/50 rounded text-white/70 hover:text-white transition-colors"
+                                    title="Delete box"
+                                >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                        {/* Content */}
+                        <div className="p-2">
+                            <textarea
+                                value={box.content}
+                                onChange={(e) => updateFloatingBox(box.id, { content: e.target.value })}
+                                onFocus={() => setEditingBoxId(box.id)}
+                                onBlur={() => setEditingBoxId(null)}
+                                placeholder="Type here..."
+                                className="w-full bg-transparent text-white text-sm resize-none focus:outline-none placeholder:text-white/50"
+                                style={{ minHeight: box.height - 40 }}
+                            />
+                        </div>
+                        {/* Resize handle */}
+                        <div
+                            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+                            style={{
+                                background: 'linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.3) 50%)',
+                                borderRadius: '0 0 6px 0'
+                            }}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const startX = e.clientX;
+                                const startY = e.clientY;
+                                const startWidth = box.width;
+                                const startHeight = box.height;
+
+                                const handleResize = (moveEvent: MouseEvent) => {
+                                    const newWidth = Math.max(100, startWidth + (moveEvent.clientX - startX));
+                                    const newHeight = Math.max(60, startHeight + (moveEvent.clientY - startY));
+                                    updateFloatingBox(box.id, { width: newWidth, height: newHeight });
+                                };
+
+                                const stopResize = () => {
+                                    document.removeEventListener('mousemove', handleResize);
+                                    document.removeEventListener('mouseup', stopResize);
+                                };
+
+                                document.addEventListener('mousemove', handleResize);
+                                document.addEventListener('mouseup', stopResize);
+                            }}
+                        />
+                    </div>
+                ))}
+
                 <div className="max-w-3xl mx-auto py-12 px-8 min-h-[90vh] bg-zinc-950">
                     <input
                         value={title}

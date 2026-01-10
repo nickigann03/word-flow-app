@@ -21,6 +21,16 @@ export interface NoteTab {
     content: string;
 }
 
+export interface FloatingBox {
+    id: string;
+    x: number;  // position from left (percentage)
+    y: number;  // position from top (pixels)
+    width: number;
+    height: number;
+    content: string;
+    color?: string;  // background color
+}
+
 export interface Note {
     id?: string;
     userId: string;
@@ -28,6 +38,7 @@ export interface Note {
     title: string;
     content: string;
     tabs?: NoteTab[];  // Optional tabs for multi-page notes
+    floatingBoxes?: FloatingBox[];  // Optional floating text boxes
     tags: string[];
     createdAt?: any;
     updatedAt?: any;
