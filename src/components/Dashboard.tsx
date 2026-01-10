@@ -100,6 +100,9 @@ export function Dashboard() {
             updatedAt: new Date()
         };
 
+        // Optimistic UI Update: Add to list immediately
+        setNotes(prev => [newNote, ...prev]);
+
         // We still set view/selection immediately to ensure smooth transition
         // The notes list update will come from the subscription instantly
         setSelectedNote(newNote);
@@ -109,24 +112,33 @@ export function Dashboard() {
         firestoreService.createNote(user.uid, newNote, newId)
             .catch(error => {
                 console.error('Failed to create note in background:', error);
+                // Rollback
+                setNotes(prev => prev.filter(n => n.id !== newId));
                 toast.error('Sync Failed', 'Could not save note to server');
             });
     };
 
     const handleSaveNote = async (updated: Note) => {
         if (!updated.id) return;
+
+        // Optimistic UI Update
+        const previousNotes = [...notes];
+        setNotes(prevNotes => prevNotes.map(n => n.id === updated.id ? updated : n));
+        setSelectedNote(updated);
+        // Note: We don't necessarily update currentNoteContent here as it might be driven by the editor's internal state, 
+        // but ensuring it syncs is good.
+        setCurrentNoteContent(updated.content || '');
+
         try {
             await firestoreService.updateNote(updated.id, {
                 title: updated.title,
                 content: updated.content
             });
-            setNotes(prevNotes => prevNotes.map(n => n.id === updated.id ? updated : n));
-            // Don't show success toast on every auto-save to avoid spam
-            // Instead, we rely on the absence of error
-            setSelectedNote(updated);
-            setCurrentNoteContent(updated.content || '');
+            // Success - silent, no toast needed for auto-saves
         } catch (error) {
             console.error('Failed to save note:', error);
+            // Rollback UI
+            setNotes(previousNotes);
             toast.error('Save Failed', `Your changes could not be saved: ${(error as Error).message}`);
         }
     };
@@ -153,6 +165,8 @@ export function Dashboard() {
             })
             .catch(error => {
                 console.error('Failed to delete note:', error);
+                // Rollback
+                setNotes(previousNotes);
                 toast.error('Delete Failed', 'Could not delete note from server');
             });
     };
@@ -300,13 +314,17 @@ export function Dashboard() {
                         const newFolder: Folder = { id: newId, title: createFolderName, userId: user.uid, createdAt: new Date() };
 
 
-                        // 1. Instant UI Update handled by onSnapshot
+
+                        // 1. Instant UI Update (Optimistic)
+                        setFolders(prev => [newFolder, ...prev]);
                         setIsCreateFolderOpen(false);
 
                         // 2. Background Sync
                         firestoreService.createFolder(user.uid, { title: createFolderName }, newId)
                             .catch(e => {
                                 console.error('Folder sync failed', e);
+                                // Rollback
+                                setFolders(prev => prev.filter(f => f.id !== newId));
                                 toast.error('Sync Failed', 'Could not save folder to server');
                             });
                     }}
@@ -363,14 +381,23 @@ export function Dashboard() {
                         <button
                             onClick={async () => {
                                 if (!folderToDelete) return;
+
+                                const idToDelete = folderToDelete;
+                                // 1. Optimistic UI Update
+                                setFolders(prev => prev.filter(f => f.id !== idToDelete));
+                                if (selectedFolder === idToDelete) setSelectedFolder('recent');
+                                setFolderToDelete(null); // Close modal instantly
+
                                 const toastId = toast.loading('Deleting Folder...');
+
+                                // 2. Background Sync
                                 try {
-                                    await firestoreService.deleteFolder(folderToDelete);
-                                    if (selectedFolder === folderToDelete) setSelectedFolder('recent');
+                                    await firestoreService.deleteFolder(idToDelete);
                                     toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
-                                    setFolderToDelete(null);
                                 } catch (e) {
                                     toast.updateToast(toastId, { title: 'Failed to delete folder', message: (e as Error).message || 'Could not delete folder', type: 'error' });
+                                    const freshFolders = await firestoreService.getFolders(user?.uid || '');
+                                    setFolders(freshFolders);
                                 }
                             }}
                             className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
