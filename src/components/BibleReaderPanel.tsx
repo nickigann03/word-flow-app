@@ -17,7 +17,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
     // Navigation state
     const [selectedBook, setSelectedBook] = useState(BIBLE_BOOKS[39]); // Matthew
     const [selectedChapter, setSelectedChapter] = useState(1);
-    const [selectedVersion, setSelectedVersion] = useState<BibleVersionId>('kjv');
+    const [selectedVersion, setSelectedVersion] = useState<BibleVersionId>('esv');
 
     // UI state
     const [showBookPicker, setShowBookPicker] = useState(false);

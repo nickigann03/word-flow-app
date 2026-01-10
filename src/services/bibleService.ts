@@ -135,7 +135,10 @@ class BibleService {
     /**
      * Fetch a Bible verse with specified translation
      */
-    async getVerse(reference: string, translation: BibleVersionId = 'kjv'): Promise<BibleVerse> {
+    /**
+     * Fetch a Bible verse with specified translation
+     */
+    async getVerse(reference: string, translation: BibleVersionId = 'esv'): Promise<BibleVerse> {
         const cacheKey = `${reference}:${translation}`;
 
         if (this.cache.has(cacheKey)) {
@@ -158,7 +161,7 @@ class BibleService {
                     verse = await this.fetchFromEsvApi(reference);
                     break;
                 default:
-                    verse = await this.fetchFromBibleApi(reference, 'kjv');
+                    verse = await this.fetchFromBibleApi(reference, 'esv');
             }
 
             this.cache.set(cacheKey, verse);
@@ -293,30 +296,38 @@ class BibleService {
             'jude': 'JUD', 'revelation': 'REV'
         };
 
-        // Parse reference like "John 3:16" or "Genesis 1:1-5"
-        const match = reference.match(/^(\d?\s?[a-zA-Z\s]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
+        // Parse reference like "John 3:16" or "Genesis 1:1-5" or "Numbers 1-36"
+        // Updated regex to support Chapter-Chapter ranges
+        const match = reference.match(/^(\d?\s?[a-zA-Z\s]+)\s+(\d+)(?:[:](\d+)(?:-(\d+))?|[-](\d+))?$/i);
+
         if (!match) return reference;
 
         const bookName = match[1].trim().toLowerCase();
-        const chapter = match[2];
+        const startChapter = match[2];
         const startVerse = match[3];
         const endVerse = match[4];
+        const endChapter = match[5]; // Captured Group 5 for Chapter range
 
         const bookCode = bookMappings[bookName] || bookName.substring(0, 3).toUpperCase();
 
-        if (startVerse && endVerse) {
-            return `${bookCode}.${chapter}.${startVerse}-${bookCode}.${chapter}.${endVerse}`;
+        if (endChapter) {
+            // Case: Numbers 1-36 -> NUM.1.1-NUM.36.100 (Approx format, API.Bible usually needs verse ranges for proper passage IDs, 
+            // but for full chapters, we might need a different strategy.
+            // API.Bible format for Chapters: JHN.1-JHN.21
+            return `${bookCode}.${startChapter}-${bookCode}.${endChapter}`;
+        } else if (startVerse && endVerse) {
+            return `${bookCode}.${startChapter}.${startVerse}-${bookCode}.${startChapter}.${endVerse}`;
         } else if (startVerse) {
-            return `${bookCode}.${chapter}.${startVerse}`;
+            return `${bookCode}.${startChapter}.${startVerse}`;
         } else {
-            return `${bookCode}.${chapter}`;
+            return `${bookCode}.${startChapter}`;
         }
     }
 
     /**
      * Fetch an entire chapter
      */
-    async getChapter(book: string, chapter: number, translation: BibleVersionId = 'kjv'): Promise<BibleVerse> {
+    async getChapter(book: string, chapter: number, translation: BibleVersionId = 'esv'): Promise<BibleVerse> {
         const reference = `${book} ${chapter}`;
         return this.getVerse(reference, translation);
     }
