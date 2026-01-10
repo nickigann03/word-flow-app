@@ -30,7 +30,7 @@ import {
     Heading1, Heading2, Heading3, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify,
     Sparkles, BookOpen, Quote, ChevronDown, Trash, ChevronRight,
     Highlighter, Circle, MessageSquarePlus, Image as ImageIcon,
-    FileText, Upload, Radio, Square, Clock,
+    FileText, Upload, Radio, Square, Clock, Settings,
     Table as TableIcon, CheckSquare, Code, Minus, Type,
     Info, AlertTriangle, CheckCircle, XCircle,
     RowsIcon, ColumnsIcon, Trash2, Plus, Indent as IndentIcon,
@@ -280,6 +280,19 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const [draggingBoxId, setDraggingBoxId] = useState<string | null>(null);
     const [resizingBoxId, setResizingBoxId] = useState<string | null>(null);
     const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+
+    // Page Settings State
+    const [pageOrientation, setPageOrientation] = useState<'portrait' | 'landscape'>(
+        note.pageSettings?.orientation || 'portrait'
+    );
+    const [marginSize, setMarginSize] = useState<'normal' | 'narrow' | 'wide'>(
+        note.pageSettings?.marginSize || 'normal'
+    );
+    const [showPageSettings, setShowPageSettings] = useState(false);
+
+    // Highlighter Color State
+    const [highlighterColor, setHighlighterColor] = useState('#ffff00');
+    const [showHighlighterPicker, setShowHighlighterPicker] = useState(false);
 
     const editorRef = useRef<HTMLDivElement>(null);
 
@@ -629,11 +642,12 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     title,
                     content: editor.getHTML(),
                     tabs: updatedTabs,
-                    floatingBoxes: floatingBoxes
+                    floatingBoxes: floatingBoxes,
+                    pageSettings: { orientation: pageOrientation, marginSize: marginSize }
                 });
             }
         }, 1000);
-    }, [editor, tabs, activeTabId, floatingBoxes]);
+    }, [editor, tabs, activeTabId, floatingBoxes, pageOrientation, marginSize]);
 
     useEffect(() => {
         onUpdateTrigger.current = triggerSave;
@@ -994,6 +1008,57 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
                     <button onClick={handleExportPDF} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
                     <button onClick={addFloatingBox} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Add Text Box"><Square className="w-4 h-4" /></button>
+
+                    {/* Page Settings */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowPageSettings(!showPageSettings)}
+                            className={cn("p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors", showPageSettings && "bg-zinc-800 text-white")}
+                            title="Page Settings"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
+                        {showPageSettings && (
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 p-3">
+                                <div className="text-xs font-medium text-zinc-400 mb-2">Page Layout</div>
+                                <div className="flex gap-1 mb-3">
+                                    <button
+                                        onClick={() => setPageOrientation('portrait')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", pageOrientation === 'portrait' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Portrait
+                                    </button>
+                                    <button
+                                        onClick={() => setPageOrientation('landscape')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", pageOrientation === 'landscape' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Landscape
+                                    </button>
+                                </div>
+                                <div className="text-xs font-medium text-zinc-400 mb-2">Margins</div>
+                                <div className="flex gap-1">
+                                    <button
+                                        onClick={() => setMarginSize('narrow')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", marginSize === 'narrow' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Narrow
+                                    </button>
+                                    <button
+                                        onClick={() => setMarginSize('normal')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", marginSize === 'normal' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Normal
+                                    </button>
+                                    <button
+                                        onClick={() => setMarginSize('wide')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", marginSize === 'wide' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Wide
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
 
                     {/* Sermon Recording Button */}
@@ -1182,7 +1247,19 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     </div>
                 ))}
 
-                <div className="max-w-3xl mx-auto py-12 px-8 min-h-[90vh] bg-zinc-950">
+                <div
+                    className={cn(
+                        "mx-auto min-h-[90vh] bg-zinc-950",
+                        // Orientation
+                        pageOrientation === 'landscape' ? "max-w-6xl" : "max-w-3xl",
+                        // Margins
+                        marginSize === 'narrow' ? "py-6 px-4" : marginSize === 'wide' ? "py-16 px-16" : "py-12 px-8"
+                    )}
+                    style={{
+                        // Tighter line spacing for lists
+                        lineHeight: '1.6'
+                    }}
+                >
                     <input
                         value={title}
                         onChange={(e) => {
@@ -1238,7 +1315,48 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
                         {/* Advanced */}
                         <div className="flex items-center gap-0.5 pl-1">
-                            <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('highlight') && "text-amber-400")} title="Highlight"><Highlighter className="w-4 h-4" /></button>
+                            {/* Highlighter with color picker */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowHighlighterPicker(!showHighlighterPicker)}
+                                    className={cn("p-1.5 hover:bg-zinc-800 rounded flex items-center gap-0.5", editor.isActive('highlight') && "text-amber-400")}
+                                    title="Highlight"
+                                >
+                                    <Highlighter className="w-4 h-4" />
+                                    <ChevronDown className="w-2 h-2" />
+                                </button>
+                                {showHighlighterPicker && (
+                                    <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
+                                        <div className="flex gap-1">
+                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-yellow-400 hover:scale-110 transition-transform" title="Yellow" />
+                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-green-400 hover:scale-110 transition-transform" title="Green" />
+                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-cyan-400 hover:scale-110 transition-transform" title="Cyan" />
+                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-pink-400 hover:scale-110 transition-transform" title="Pink" />
+                                            <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-orange-400 hover:scale-110 transition-transform" title="Orange" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="color"
+                                                value={highlighterColor}
+                                                onChange={(e) => setHighlighterColor(e.target.value)}
+                                                className="w-5 h-5 cursor-pointer border-0 rounded"
+                                            />
+                                            <button
+                                                onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
+                                                className="text-xs text-zinc-400 hover:text-white"
+                                            >
+                                                Apply
+                                            </button>
+                                        </div>
+                                        <button
+                                            onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
+                                            className="text-xs text-zinc-500 hover:text-white text-center"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <button onClick={() => editor.chain().focus().toggleCircle().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('circle') && "text-red-400")} title="Circle Word"><Circle className="w-4 h-4" /></button>
                             <button onClick={openCommentDialog} className={cn("p-1.5 hover:bg-zinc-800 rounded", editor.isActive('comment') && "text-blue-400")} title="Add Comment"><MessageSquarePlus className="w-4 h-4" /></button>
                             <button onClick={handleExegete} className="ml-1 p-1.5 hover:bg-zinc-800 rounded flex items-center gap-1 text-xs font-semibold text-purple-400 bg-purple-500/10"><BookOpen className="w-3 h-3" /> Exegete</button>

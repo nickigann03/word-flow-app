@@ -31,6 +31,11 @@ export interface FloatingBox {
     color?: string;  // background color
 }
 
+export interface PageSettings {
+    orientation: 'portrait' | 'landscape';
+    marginSize: 'normal' | 'narrow' | 'wide';
+}
+
 export interface Note {
     id?: string;
     userId: string;
@@ -39,6 +44,7 @@ export interface Note {
     content: string;
     tabs?: NoteTab[];  // Optional tabs for multi-page notes
     floatingBoxes?: FloatingBox[];  // Optional floating text boxes
+    pageSettings?: PageSettings;  // Optional page layout settings
     tags: string[];
     createdAt?: any;
     updatedAt?: any;
