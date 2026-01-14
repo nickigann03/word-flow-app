@@ -117,6 +117,7 @@ class AudioRecorderService {
 
     /**
      * Transcribe an audio blob - can be called separately for retry
+     * Uses optimized settings to reduce Whisper hallucinations
      */
     async transcribeAudio(audioBlob: Blob): Promise<string> {
         const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
@@ -133,7 +134,13 @@ class AudioRecorderService {
         formData.append('response_format', 'verbose_json');
         formData.append('language', 'en');
 
-        console.log('Sending audio to Groq Whisper API...');
+        // CRITICAL: Temperature 0 reduces hallucinations significantly
+        formData.append('temperature', '0');
+
+        // Provide context prompt to guide the model (reduces "thank you" hallucinations)
+        formData.append('prompt', 'This is a sermon or Bible teaching recording. The speaker discusses Scripture, theology, and Christian doctrine.');
+
+        console.log('Sending audio to Groq Whisper API with anti-hallucination settings...');
 
         const response = await fetch(GROQ_WHISPER_URL, {
             method: 'POST',
@@ -150,8 +157,42 @@ class AudioRecorderService {
         }
 
         const data = await response.json();
-        console.log('Transcription complete:', data.text?.substring(0, 100) + '...');
-        return data.text || '';
+        let transcript = data.text || '';
+
+        // Post-process to remove common Whisper hallucinations
+        transcript = this.cleanTranscript(transcript);
+
+        console.log('Transcription complete:', transcript.substring(0, 100) + '...');
+        return transcript;
+    }
+
+    /**
+     * Clean up transcript to remove common Whisper hallucinations
+     */
+    private cleanTranscript(text: string): string {
+        // Remove repeated "thank you" phrases (common hallucination)
+        let cleaned = text.replace(/(\s*thank you[,.\s]*){3,}/gi, ' ');
+
+        // Remove repeated single words or short phrases
+        cleaned = cleaned.replace(/(\b\w+\b)(\s+\1){2,}/gi, '$1');
+
+        // Remove common hallucination patterns
+        const hallucinations = [
+            /please subscribe[.\s]*/gi,
+            /like and subscribe[.\s]*/gi,
+            /thanks for watching[.\s]*/gi,
+            /see you next time[.\s]*/gi,
+            /bye bye[.\s]*/gi,
+        ];
+
+        hallucinations.forEach(pattern => {
+            cleaned = cleaned.replace(pattern, '');
+        });
+
+        // Clean up extra whitespace
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+        return cleaned;
     }
 
     /**
