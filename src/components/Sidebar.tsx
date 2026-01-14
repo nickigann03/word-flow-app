@@ -12,7 +12,8 @@ import {
     BookOpen,
     MessageSquareText,
     PanelLeftClose,
-    PanelLeft
+    PanelLeft,
+    Mic
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ interface SidebarProps {
     onToggleSidebar?: () => void;
     onOpenBible?: () => void;
     onOpenAIChat?: () => void;
+    onOpenRecordings?: () => void;
     isBibleOpen?: boolean;
     isAIChatOpen?: boolean;
     isCollapsed?: boolean;
@@ -42,6 +44,7 @@ export function Sidebar({
     onDeleteFolder,
     onOpenBible,
     onOpenAIChat,
+    onOpenRecordings,
     isBibleOpen,
     isAIChatOpen,
     isCollapsed = false,
@@ -228,6 +231,18 @@ export function Sidebar({
                             <MessageSquareText className={cn("w-4 h-4 shrink-0", isAIChatOpen ? "text-purple-400" : "text-zinc-500 group-hover:text-zinc-300")} />
                             {!isCollapsed && <span className="truncate">Reformed AI</span>}
                             {isAIChatOpen && !isCollapsed && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                        </button>
+                        <button
+                            onClick={onOpenRecordings}
+                            className={cn(
+                                "flex items-center w-full gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md group",
+                                "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800",
+                                isCollapsed && "justify-center px-2"
+                            )}
+                            title={isCollapsed ? "Recordings Library" : undefined}
+                        >
+                            <Mic className="w-4 h-4 shrink-0 text-zinc-500 group-hover:text-orange-400" />
+                            {!isCollapsed && <span className="truncate">Recordings</span>}
                         </button>
                     </div>
                 </div>

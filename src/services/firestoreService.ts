@@ -206,6 +206,71 @@ class FirestoreService {
     async deleteNote(noteId: string) {
         await deleteDoc(doc(db, 'notes', noteId));
     }
+
+    // --- Recordings Library ---
+    async saveRecording(userId: string, recordingData: {
+        noteId?: string;
+        noteTitle?: string;
+        audioUrl?: string;
+        audioBlob?: Blob;
+        transcript: string;
+        duration: number;
+    }) {
+        const docRef = await addDoc(collection(db, 'recordings'), {
+            userId,
+            noteId: recordingData.noteId || null,
+            noteTitle: recordingData.noteTitle || 'Untitled Recording',
+            audioUrl: recordingData.audioUrl || null,
+            transcript: recordingData.transcript,
+            duration: recordingData.duration,
+            createdAt: serverTimestamp()
+        });
+        return docRef.id;
+    }
+
+    async getRecordings(userId: string) {
+        const q = query(
+            collection(db, 'recordings'),
+            where('userId', '==', userId),
+            orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+
+    subscribeRecordings(userId: string, onData: (recordings: Recording[]) => void) {
+        const q = query(
+            collection(db, 'recordings'),
+            where('userId', '==', userId),
+            orderBy('createdAt', 'desc')
+        );
+        return onSnapshot(q, (snapshot) => {
+            onData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recording)));
+        });
+    }
+
+    async deleteRecording(recordingId: string) {
+        await deleteDoc(doc(db, 'recordings', recordingId));
+    }
+
+    async updateRecording(recordingId: string, data: Partial<Recording>) {
+        const docRef = doc(db, 'recordings', recordingId);
+        await updateDoc(docRef, {
+            ...data,
+            updatedAt: serverTimestamp()
+        });
+    }
+}
+
+export interface Recording {
+    id?: string;
+    userId: string;
+    noteId?: string;
+    noteTitle?: string;
+    audioUrl?: string;
+    transcript: string;
+    duration: number;
+    createdAt?: any;
 }
 
 export default new FirestoreService();

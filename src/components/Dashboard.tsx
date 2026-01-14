@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { NoteEditor } from './NoteEditor';
 import { BibleReader } from './BibleReaderPanel';
 import { ReformedAIChat } from './ReformedAIChat';
+import RecordingsLibrary from './RecordingsLibrary';
 import { useAuth } from '@/contexts/AuthContext';
 import firestoreService, { Folder, Note } from '@/services/firestoreService';
 import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
@@ -33,6 +34,7 @@ export function Dashboard() {
     // Panel states
     const [isBibleOpen, setIsBibleOpen] = useState(false);
     const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+    const [isRecordingsOpen, setIsRecordingsOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     // Modal states
@@ -193,6 +195,7 @@ export function Dashboard() {
                 onDeleteFolder={(id) => setFolderToDelete(id)}
                 onOpenBible={handleToggleBible}
                 onOpenAIChat={handleToggleAIChat}
+                onOpenRecordings={() => setIsRecordingsOpen(true)}
                 isBibleOpen={isBibleOpen}
                 isAIChatOpen={isAIChatOpen}
                 isCollapsed={isSidebarCollapsed}
@@ -298,6 +301,14 @@ export function Dashboard() {
                 noteContext={currentNoteContent}
                 noteTitle={selectedNote?.title}
             />
+
+            {/* Recordings Library Modal */}
+            {isRecordingsOpen && user && (
+                <RecordingsLibrary
+                    userId={user.uid}
+                    onClose={() => setIsRecordingsOpen(false)}
+                />
+            )}
 
             {/* Create Folder Modal */}
             <Modal

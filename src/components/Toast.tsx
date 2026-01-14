@@ -1,10 +1,10 @@
 'use client'
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { X, CheckCircle, AlertCircle, Info, Loader2, Book, Mic, Save, Upload, Trash2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, AlertTriangle, Info, Loader2, Book, Mic, Save, Upload, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Toast types
-export type ToastType = 'success' | 'error' | 'info' | 'loading' | 'bible' | 'recording' | 'saving' | 'upload';
+export type ToastType = 'success' | 'error' | 'warning' | 'info' | 'loading' | 'bible' | 'recording' | 'saving' | 'upload';
 
 export interface Toast {
     id: string;
@@ -49,6 +49,7 @@ const TOAST_ICONS: Record<ToastType, typeof CheckCircle> = {
     recording: Mic,
     saving: Save,
     upload: Upload,
+    warning: AlertTriangle,
 };
 
 const TOAST_COLORS: Record<ToastType, string> = {
@@ -60,6 +61,7 @@ const TOAST_COLORS: Record<ToastType, string> = {
     recording: 'text-red-400 bg-red-500/10 border-red-500/30',
     saving: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
     upload: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+    warning: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
 };
 
 const ICON_COLORS: Record<ToastType, string> = {
@@ -71,6 +73,7 @@ const ICON_COLORS: Record<ToastType, string> = {
     recording: 'text-red-400',
     saving: 'text-blue-400',
     upload: 'text-purple-400',
+    warning: 'text-orange-400',
 };
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {

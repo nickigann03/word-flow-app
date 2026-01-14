@@ -41,6 +41,7 @@ import groqService from '@/services/groqService';
 import bibleService from '@/services/bibleService';
 import audioRecorderService from '@/services/audioRecorderService';
 import { Note } from '@/services/firestoreService';
+import firestoreService from '@/services/firestoreService';
 
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -866,44 +867,156 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         }
     };
 
-    // Stop sermon recording and transcribe
+    // Stop sermon recording and transcribe - BULLETPROOF VERSION
+    // Saves audio to Recordings Library for later access
     const handleStopSermonRecording = async () => {
         if (!editor) return;
 
-        const loadingToast = toast.loading('Processing Recording', 'Transcribing audio...');
-        setAiLoading(true);
-
+        // Clear the timer first
         if (recordingIntervalRef.current) {
             clearInterval(recordingIntervalRef.current);
             recordingIntervalRef.current = null;
         }
 
+        const loadingToast = toast.loading('Saving Recording', 'Securing your audio first...');
+        setAiLoading(true);
+        setIsSermonRecording(false);
+
+        let audioBlob: Blob | null = null;
+        let duration = 0;
+        let audioUrl: string | null = null;
+
         try {
-            const result = await audioRecorderService.stopRecording();
-            setIsSermonRecording(false);
+            // STEP 1: Stop recording and get audio blob IMMEDIATELY
+            const stopResult = await audioRecorderService.stopRecordingAndGetBlob();
+            audioBlob = stopResult.audioBlob;
+            duration = stopResult.duration;
 
-            const transcriptSection = `
-                <h2>📝 Sermon Transcript</h2>
-                <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(result.duration))})</em></p>
+            toast.updateToast(loadingToast, { title: 'Uploading Audio', message: 'Saving to cloud...' });
+
+            // STEP 2: Upload to Firebase Storage
+            try {
+                const audioId = uuidv4();
+                const storageRef = ref(storage, `recordings/${note.userId}/${audioId}.webm`);
+                await uploadBytes(storageRef, audioBlob);
+                audioUrl = await getDownloadURL(storageRef);
+                console.log('Audio uploaded to Firebase:', audioUrl);
+            } catch (uploadError) {
+                console.warn('Firebase upload failed (CORS?), downloading locally instead:', uploadError);
+                // Fallback: download locally if Firebase fails
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+                const filename = `sermon-${timestamp}.webm`;
+                audioRecorderService.downloadRecording(audioBlob, filename);
+                toast.addToast({
+                    title: 'Cloud Upload Failed',
+                    message: `Downloaded locally as ${filename}`,
+                    type: 'warning',
+                    duration: 5000
+                });
+            }
+
+        } catch (stopError) {
+            console.error('Failed to stop recording:', stopError);
+            toast.updateToast(loadingToast, {
+                title: 'Recording Error',
+                message: 'Could not save audio. Check console for details.',
+                type: 'error'
+            });
+            setAiLoading(false);
+            return;
+        }
+
+        // STEP 3: Attempt transcription (audio is already saved!)
+        toast.updateToast(loadingToast, { title: 'Transcribing', message: 'Sending to Whisper AI...' });
+
+        let transcript = '';
+        try {
+            transcript = await audioRecorderService.transcribeAudio(audioBlob);
+        } catch (transcriptError) {
+            console.error('Transcription failed:', transcriptError);
+
+            // Save to library even without transcript (so user can access audio)
+            try {
+                await firestoreService.saveRecording(note.userId, {
+                    noteId: note.id,
+                    noteTitle: title || 'Untitled Recording',
+                    audioUrl: audioUrl || undefined,
+                    transcript: `[Transcription failed: ${(transcriptError as Error).message}]`,
+                    duration: duration
+                });
+                toast.addToast({
+                    title: 'Recording Saved',
+                    message: 'Audio saved to Recordings Library (transcription failed)',
+                    type: 'warning',
+                    duration: 5000
+                });
+            } catch (saveError) {
+                console.error('Failed to save recording:', saveError);
+            }
+
+            // Insert error message in editor
+            editor.commands.insertContent(`
+                <h2>⚠️ Transcription Failed</h2>
+                <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(duration))})</em></p>
+                <p style="color: #f87171;"><strong>Error:</strong> ${(transcriptError as Error).message}</p>
+                <p>✅ <strong>Your recording was saved to the Recordings Library</strong></p>
+                <p>Access it from the sidebar to download or retry transcription.</p>
                 <hr/>
-                <p>${result.transcript}</p>
-                <hr/>
-            `;
+            `);
 
-            editor.commands.insertContent(transcriptSection);
+            toast.updateToast(loadingToast, {
+                title: 'Transcription Failed',
+                message: 'Recording saved to library. Access from sidebar.',
+                type: 'error'
+            });
+            setAiLoading(false);
+            return;
+        }
 
-            if (result.transcript.length > 100) {
-                toast.updateToast(loadingToast, { title: 'Generating Summary', message: 'AI is summarizing your sermon...' });
-                const summary = await groqService.summarizeSermon(result.transcript);
+        // STEP 4: Save recording to library WITH transcript
+        try {
+            await firestoreService.saveRecording(note.userId, {
+                noteId: note.id,
+                noteTitle: title || 'Untitled Recording',
+                audioUrl: audioUrl || undefined,
+                transcript: transcript,
+                duration: duration
+            });
+            console.log('Recording saved to library');
+        } catch (saveError) {
+            console.error('Failed to save to library:', saveError);
+            // Don't fail - we'll still insert the transcript
+        }
+
+        // STEP 5: Insert FULL transcript to editor
+        const transcriptSection = `
+            <h2>📝 Sermon Transcript</h2>
+            <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(duration))})</em></p>
+            <hr/>
+            <p>${transcript}</p>
+            <hr/>
+        `;
+        editor.commands.insertContent(transcriptSection);
+
+        // Save immediately after inserting transcript
+        triggerSave();
+
+        toast.updateToast(loadingToast, { title: 'Recording Complete', message: 'Saved to library & added to note', type: 'success' });
+
+        // STEP 6: Attempt summary (optional, won't lose transcript if this fails)
+        if (transcript.length > 100) {
+            try {
+                toast.addToast({ title: 'Generating Summary', message: 'AI is summarizing...', type: 'info', duration: 3000 });
+                const summary = await groqService.summarizeSermon(transcript);
                 editor.commands.insertContent(
                     `<blockquote><strong>📋 AI Summary:</strong><br/>${summary}</blockquote><p></p>`
                 );
+                triggerSave();
+                toast.success('Summary Added', 'AI summary appended to transcript');
+            } catch (summaryError) {
+                console.warn('Summary generation failed:', summaryError);
+                // Don't show error toast - transcript is already saved, summary is bonus
             }
-            toast.updateToast(loadingToast, { title: 'Transcription Complete', message: 'Your sermon has been transcribed', type: 'success' });
-        } catch (error) {
-            console.error('Recording/transcription failed:', error);
-            toast.updateToast(loadingToast, { title: 'Transcription Failed', message: (error as Error).message, type: 'error' });
-            setIsSermonRecording(false);
         }
 
         setAiLoading(false);

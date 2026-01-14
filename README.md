@@ -122,5 +122,46 @@ WordFlow is a powerfully simple, Notion-style editor designed specifically for t
 *   **Expandable Panels**: Bible Reader and AI Chat can be expanded
 *   **Floating Menus**: Bubble menu for text formatting, floating menu for blocks
 
+## 🔧 Troubleshooting
+
+### Firebase Storage CORS Issues
+If you're getting CORS errors when uploading images or audio recordings, you need to configure CORS for your Firebase Storage bucket:
+
+**Option 1: Use the helper script (Windows)**
+1. Install [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+2. Open terminal and run: `gcloud auth login`
+3. Double-click `fix-cors.bat` and enter your Firebase Project ID
+
+**Option 2: Manual gsutil command**
+```bash
+# Login to Google Cloud
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# Apply CORS configuration
+gsutil cors set cors.json gs://YOUR_PROJECT_ID.appspot.com
+
+# Verify it worked
+gsutil cors get gs://YOUR_PROJECT_ID.appspot.com
+```
+
+**Option 3: Firebase Console**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/storage/browser)
+2. Select your storage bucket
+3. Go to "Permissions" → "CORS configuration"
+4. Paste the contents of `cors.json`
+
+### Sermon Recording Issues
+If transcription fails after recording:
+- ✅ **Your audio is automatically downloaded** to your Downloads folder
+- ✅ The recording is also saved to Firebase Storage (if CORS is configured)
+- You can manually transcribe using [otter.ai](https://otter.ai), [Riverside.fm](https://riverside.fm), or Google Docs Voice Typing
+
+### Missing API Keys
+Check your `.env.local` or Vercel Environment Variables:
+- `NEXT_PUBLIC_GROQ_API_KEY` - Required for transcription and AI features
+- `NEXT_PUBLIC_FIREBASE_*` - Required for authentication and data storage
+
 ## 📄 License
 MIT
+
