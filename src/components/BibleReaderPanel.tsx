@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Book, ChevronLeft, ChevronRight, X, Settings, Search,
-    BookOpen, ChevronDown, Bookmark, Copy, Check, Maximize2, Minimize2
+    BookOpen, ChevronDown, Bookmark, Copy, Check, Maximize2, Minimize2, GripVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import bibleService, { BIBLE_VERSIONS, BIBLE_BOOKS, BibleVersionId, BibleVerse } from '@/services/bibleService';
@@ -29,6 +29,11 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
     const [isExpanded, setIsExpanded] = useState(false);
     const [bookFilter, setBookFilter] = useState(''); // For filtering books in the picker
 
+    // Resizable panel state
+    const [panelWidth, setPanelWidth] = useState(400);
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeRef = useRef<HTMLDivElement>(null);
+
     // Content state
     const [chapterContent, setChapterContent] = useState<BibleVerse | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +52,33 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
     const [lineHeight, setLineHeight] = useState(1.8);
 
     const contentRef = useRef<HTMLDivElement>(null);
+
+    // Handle resize drag
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing) return;
+            const newWidth = window.innerWidth - e.clientX;
+            setPanelWidth(Math.max(300, Math.min(800, newWidth)));
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        if (isResizing) {
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     // Load chapter content
     useEffect(() => {
@@ -140,10 +172,24 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
     if (!isOpen) return null;
 
     return (
-        <div className={cn(
-            "flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-all duration-300 overflow-hidden",
-            isExpanded ? "w-[600px]" : "w-[400px]"
-        )}>
+        <div
+            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 overflow-hidden relative"
+            style={{ width: isExpanded ? 600 : panelWidth }}
+        >
+            {/* Resize Handle */}
+            <div
+                ref={resizeRef}
+                onMouseDown={() => setIsResizing(true)}
+                className={cn(
+                    "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-20 group",
+                    "hover:bg-amber-500/50 transition-colors",
+                    isResizing && "bg-amber-500"
+                )}
+            >
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 p-1 bg-zinc-800 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3 h-3 text-zinc-400" />
+                </div>
+            </div>
             {/* Header */}
             <div className="h-14 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur shrink-0">
                 <div className="flex items-center gap-3">

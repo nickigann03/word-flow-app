@@ -23,7 +23,10 @@ class AudioRecorderService {
     private audioChunks: Blob[] = [];
     private stream: MediaStream | null = null;
     private startTime: number = 0;
+    private pausedTime: number = 0;
+    private totalPausedDuration: number = 0;
     public isRecording = false;
+    public isPaused = false;
 
     // Store last recording for recovery
     public lastRecordingBlob: Blob | null = null;
@@ -43,6 +46,8 @@ class AudioRecorderService {
             this.mediaRecorder = new MediaRecorder(this.stream, options);
             this.audioChunks = [];
             this.startTime = Date.now();
+            this.pausedTime = 0;
+            this.totalPausedDuration = 0;
 
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -52,10 +57,29 @@ class AudioRecorderService {
 
             this.mediaRecorder.start(1000); // Collect data every second
             this.isRecording = true;
+            this.isPaused = false;
             console.log('Recording started...');
         } catch (error) {
             console.error('Failed to start recording:', error);
             throw new Error('Microphone access denied');
+        }
+    }
+
+    pauseRecording(): void {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.pause();
+            this.pausedTime = Date.now();
+            this.isPaused = true;
+            console.log('Recording paused');
+        }
+    }
+
+    resumeRecording(): void {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+            this.totalPausedDuration += Date.now() - this.pausedTime;
+            this.mediaRecorder.resume();
+            this.isPaused = false;
+            console.log('Recording resumed');
         }
     }
 
@@ -171,11 +195,14 @@ class AudioRecorderService {
         this.stream?.getTracks().forEach(track => track.stop());
         this.audioChunks = [];
         this.isRecording = false;
+        this.isPaused = false;
     }
 
     getRecordingDuration(): number {
         if (!this.isRecording) return 0;
-        return (Date.now() - this.startTime) / 1000;
+        const totalElapsed = Date.now() - this.startTime;
+        const currentPaused = this.isPaused ? Date.now() - this.pausedTime : 0;
+        return (totalElapsed - this.totalPausedDuration - currentPaused) / 1000;
     }
 }
 

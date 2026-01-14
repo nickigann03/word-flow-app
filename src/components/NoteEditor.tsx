@@ -243,6 +243,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
     // Sermon Recording State
     const [isSermonRecording, setIsSermonRecording] = useState(false);
+    const [isRecordingPaused, setIsRecordingPaused] = useState(false);
     const [sermonRecordingDuration, setSermonRecordingDuration] = useState(0);
     const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -855,15 +856,32 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         try {
             await audioRecorderService.startRecording();
             setIsSermonRecording(true);
+            setIsRecordingPaused(false);
             setSermonRecordingDuration(0);
             toast.addToast({ title: 'Recording Started', message: 'Sermon recording in progress...', type: 'recording', duration: 3000 });
 
             recordingIntervalRef.current = setInterval(() => {
-                setSermonRecordingDuration(prev => prev + 1);
+                // Only increment if not paused
+                if (!audioRecorderService.isPaused) {
+                    setSermonRecordingDuration(prev => prev + 1);
+                }
             }, 1000);
         } catch (error) {
             console.error('Failed to start recording:', error);
             toast.error('Recording Failed', (error as Error).message);
+        }
+    };
+
+    // Toggle pause/resume for sermon recording
+    const handleTogglePauseRecording = () => {
+        if (isRecordingPaused) {
+            audioRecorderService.resumeRecording();
+            setIsRecordingPaused(false);
+            toast.info('Recording Resumed', 'Recording in progress...');
+        } else {
+            audioRecorderService.pauseRecording();
+            setIsRecordingPaused(true);
+            toast.info('Recording Paused', 'Click to resume');
         }
     };
 
@@ -1201,13 +1219,42 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
                     {/* Sermon Recording Button */}
                     {isSermonRecording ? (
-                        <button
-                            onClick={handleStopSermonRecording}
-                            disabled={aiLoading}
-                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-full bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-500 transition-all"
-                        >
-                            <Square className="w-3 h-3" /> Stop Recording
-                        </button>
+                        <div className="flex items-center gap-1">
+                            {/* Recording timer */}
+                            <span className={cn(
+                                "px-2 py-1 text-xs font-mono rounded",
+                                isRecordingPaused ? "text-yellow-400 bg-yellow-500/10" : "text-red-400 bg-red-500/10 animate-pulse"
+                            )}>
+                                {isRecordingPaused ? '⏸' : '●'} {formatDuration(sermonRecordingDuration)}
+                            </span>
+                            {/* Pause/Resume button */}
+                            <button
+                                onClick={handleTogglePauseRecording}
+                                disabled={aiLoading}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition-all",
+                                    isRecordingPaused
+                                        ? "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-500/30"
+                                        : "bg-yellow-600 text-white hover:bg-yellow-500 shadow-lg shadow-yellow-500/30"
+                                )}
+                                title={isRecordingPaused ? "Resume Recording" : "Pause Recording"}
+                            >
+                                {isRecordingPaused ? (
+                                    <><Radio className="w-3 h-3" /> Resume</>
+                                ) : (
+                                    <><Clock className="w-3 h-3" /> Pause</>
+                                )}
+                            </button>
+                            {/* Stop button */}
+                            <button
+                                onClick={handleStopSermonRecording}
+                                disabled={aiLoading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-red-600 text-white shadow-lg shadow-red-500/30 hover:bg-red-500 transition-all"
+                                title="Stop and Transcribe"
+                            >
+                                <Square className="w-3 h-3" /> Stop
+                            </button>
+                        </div>
                     ) : (
                         <button
                             onClick={handleStartSermonRecording}
@@ -1298,33 +1345,35 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                             <ChevronDown className="w-2 h-2" />
                         </button>
                         {showHighlighterPicker && (
-                            <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-2">
-                                <div className="flex gap-1">
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-yellow-400 hover:scale-110 transition-transform" title="Yellow" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-green-400 hover:scale-110 transition-transform" title="Green" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-cyan-400 hover:scale-110 transition-transform" title="Cyan" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-pink-400 hover:scale-110 transition-transform" title="Pink" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-5 h-5 rounded bg-orange-400 hover:scale-110 transition-transform" title="Orange" />
+                            <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-3 z-[100] flex flex-col gap-2 min-w-[180px]">
+                                <div className="text-xs text-zinc-500 font-medium mb-1">Highlight Color</div>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50" title="Yellow" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-green-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-green-400/50" title="Green" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-cyan-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-cyan-400/50" title="Cyan" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-pink-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-pink-400/50" title="Pink" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-orange-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-orange-400/50" title="Orange" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#a855f7' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-purple-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-purple-400/50" title="Purple" />
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
                                     <input
                                         type="color"
                                         value={highlighterColor}
                                         onChange={(e) => setHighlighterColor(e.target.value)}
-                                        className="w-5 h-5 cursor-pointer border-0 rounded"
+                                        className="w-8 h-8 cursor-pointer border-0 rounded"
                                     />
                                     <button
                                         onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
-                                        className="text-xs text-zinc-400 hover:text-white"
+                                        className="flex-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white px-2 py-1.5 rounded"
                                     >
-                                        Apply
+                                        Apply Custom
                                     </button>
                                 </div>
                                 <button
                                     onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
-                                    className="text-xs text-zinc-500 hover:text-white text-center"
+                                    className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 rounded"
                                 >
-                                    Remove
+                                    Remove Highlight
                                 </button>
                             </div>
                         )}

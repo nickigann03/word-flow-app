@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     MessageSquare, Send, X, Trash2, Book, Sparkles,
-    ChevronDown, Info, BookOpen, Maximize2, Minimize2
+    ChevronDown, Info, BookOpen, Maximize2, Minimize2, GripVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import reformedAIService, { ChatMessage, WordDefinition } from '@/services/reformedAIService';
@@ -28,11 +28,43 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
         y: number;
     } | null>(null);
 
+    // Resizable panel state
+    const [panelWidth, setPanelWidth] = useState(380);
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeRef = useRef<HTMLDivElement>(null);
+
     // Quick questions
     const [showQuickQuestions, setShowQuickQuestions] = useState(true);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Handle resize drag
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing) return;
+            const newWidth = window.innerWidth - e.clientX;
+            setPanelWidth(Math.max(300, Math.min(700, newWidth)));
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        if (isResizing) {
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     const QUICK_QUESTIONS = noteContext ? [
         "What is the main theme of my note?",
@@ -176,10 +208,24 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
     if (!isOpen) return null;
 
     return (
-        <div className={cn(
-            "flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-all duration-300",
-            isExpanded ? "w-[550px]" : "w-[380px]"
-        )}>
+        <div
+            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 relative"
+            style={{ width: isExpanded ? 550 : panelWidth }}
+        >
+            {/* Resize Handle */}
+            <div
+                ref={resizeRef}
+                onMouseDown={() => setIsResizing(true)}
+                className={cn(
+                    "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-20 group",
+                    "hover:bg-purple-500/50 transition-colors",
+                    isResizing && "bg-purple-500"
+                )}
+            >
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 p-1 bg-zinc-800 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3 h-3 text-zinc-400" />
+                </div>
+            </div>
             {/* Header */}
             <div className="h-14 border-b border-zinc-800 flex items-center justify-between px-4 bg-gradient-to-r from-purple-950/50 to-amber-950/30 shrink-0">
                 <div className="flex items-center gap-3">
