@@ -689,9 +689,29 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
     useEffect(() => {
         if (editor && note.id !== previousNoteId) {
-            editor.commands.setContent(note.content || '');
+            // Restore tabs from the note
+            const restoredTabs = note.tabs || [{
+                id: 'main',
+                title: 'Page 1',
+                content: note.content || '',
+                pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal' }
+            }];
+
+            setTabs(restoredTabs);
+            setActiveTabId(restoredTabs[0]?.id || 'main');
+
+            // Clear and reinitialize the tabContentsRef
+            tabContentsRef.current.clear();
+            restoredTabs.forEach(tab => {
+                tabContentsRef.current.set(tab.id, tab.content || '');
+            });
+
+            // Set editor content to the first tab's content
+            editor.commands.setContent(restoredTabs[0]?.content || '');
             setTitle(note.title);
             setPreviousNoteId(note.id!);
+
+            console.log('Note changed - restored tabs:', restoredTabs.map(t => t.title));
         }
     }, [note.id, editor]);
     const [previousNoteId, setPreviousNoteId] = useState(note.id);
