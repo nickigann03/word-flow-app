@@ -1390,7 +1390,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {/* Highlighter with color picker */}
                     <div className="relative border-r border-zinc-700/50 pr-2 mr-1">
                         <button
-                            id="highlighter-button"
                             onClick={() => setShowHighlighterPicker(!showHighlighterPicker)}
                             className={cn("p-1.5 hover:bg-zinc-800 rounded flex items-center gap-0.5 transition-colors", editor.isActive('highlight') && "text-amber-400 bg-amber-500/10")}
                             title="Highlight"
@@ -1399,65 +1398,44 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                             <ChevronDown className="w-2 h-2" />
                         </button>
                         {showHighlighterPicker && (
-                            <div
-                                className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] flex flex-col gap-2"
-                                style={{
-                                    width: 200,
-                                    top: (() => {
-                                        const btn = document.getElementById('highlighter-button');
-                                        if (btn) {
-                                            const rect = btn.getBoundingClientRect();
-                                            return rect.bottom + 4;
-                                        }
-                                        return 100;
-                                    })(),
-                                    left: (() => {
-                                        const btn = document.getElementById('highlighter-button');
-                                        if (btn) {
-                                            const rect = btn.getBoundingClientRect();
-                                            const dropdownWidth = 200;
-                                            // Check if it would go off the right edge
-                                            const rightEdge = rect.left + dropdownWidth;
-                                            if (rightEdge > window.innerWidth - 16) {
-                                                // Position from right edge of button instead
-                                                return Math.max(8, rect.right - dropdownWidth);
-                                            }
-                                            return Math.max(8, rect.left);
-                                        }
-                                        return 100;
-                                    })()
-                                }}
-                            >
-                                <div className="text-xs text-zinc-500 font-medium mb-1">Highlight Color</div>
-                                <div className="flex gap-2 flex-wrap">
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50" title="Yellow" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-green-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-green-400/50" title="Green" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-cyan-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-cyan-400/50" title="Cyan" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-pink-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-pink-400/50" title="Pink" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-orange-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-orange-400/50" title="Orange" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#a855f7' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-purple-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-purple-400/50" title="Purple" />
-                                </div>
-                                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 mt-1">
-                                    <input
-                                        type="color"
-                                        value={highlighterColor}
-                                        onChange={(e) => setHighlighterColor(e.target.value)}
-                                        className="w-8 h-8 cursor-pointer border-0 rounded"
-                                    />
+                            <>
+                                {/* Backdrop to close on click outside */}
+                                <div
+                                    className="fixed inset-0 z-[9998]"
+                                    onClick={() => setShowHighlighterPicker(false)}
+                                />
+                                <div className="absolute top-full right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] w-[200px]">
+                                    <div className="text-xs text-zinc-500 font-medium mb-2">Highlight Color</div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50 mx-auto" title="Yellow" />
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-green-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-green-400/50 mx-auto" title="Green" />
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-cyan-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-cyan-400/50 mx-auto" title="Cyan" />
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-pink-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-pink-400/50 mx-auto" title="Pink" />
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-orange-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-orange-400/50 mx-auto" title="Orange" />
+                                        <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#a855f7' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-purple-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-purple-400/50 mx-auto" title="Purple" />
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 mt-2">
+                                        <input
+                                            type="color"
+                                            value={highlighterColor}
+                                            onChange={(e) => setHighlighterColor(e.target.value)}
+                                            className="w-8 h-8 cursor-pointer border-0 rounded"
+                                        />
+                                        <button
+                                            onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
+                                            className="flex-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white px-2 py-1.5 rounded"
+                                        >
+                                            Custom
+                                        </button>
+                                    </div>
                                     <button
-                                        onClick={() => { editor.chain().focus().toggleHighlight({ color: highlighterColor }).run(); setShowHighlighterPicker(false); }}
-                                        className="flex-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-white px-2 py-1.5 rounded"
+                                        onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
+                                        className="w-full text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 rounded mt-2"
                                     >
-                                        Apply Custom
+                                        Remove Highlight
                                     </button>
                                 </div>
-                                <button
-                                    onClick={() => { editor.chain().focus().unsetHighlight().run(); setShowHighlighterPicker(false); }}
-                                    className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1.5 rounded"
-                                >
-                                    Remove Highlight
-                                </button>
-                            </div>
+                            </>
                         )}
                     </div>
 
