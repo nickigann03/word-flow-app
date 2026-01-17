@@ -2,10 +2,16 @@
  * Audio Recorder Service
  * Records audio and transcribes using Groq Whisper API
  * 
- * KEY FEATURE: Saves audio blob BEFORE transcription to prevent data loss
+ * KEY FEATURES:
+ * - Saves audio blob BEFORE transcription to prevent data loss
+ * - Supports 3+ hour recordings via chunked transcription
+ * - Automatically splits large files to stay under Groq's 25MB limit
  */
 
 const GROQ_WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
+
+// Groq Whisper has 25MB limit, we use 20MB to be safe
+const MAX_CHUNK_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 
 export interface RecordingResult {
     transcript: string;
@@ -16,6 +22,12 @@ export interface RecordingResult {
 export interface StopRecordingResult {
     audioBlob: Blob;
     duration: number;
+}
+
+export interface TranscriptionProgress {
+    currentChunk: number;
+    totalChunks: number;
+    percentComplete: number;
 }
 
 class AudioRecorderService {
@@ -31,6 +43,9 @@ class AudioRecorderService {
     // Store last recording for recovery
     public lastRecordingBlob: Blob | null = null;
     public lastRecordingDuration: number = 0;
+
+    // Progress callback for chunked transcription
+    private onProgressCallback: ((progress: TranscriptionProgress) => void) | null = null;
 
     async startRecording(): Promise<void> {
         try {
@@ -196,11 +211,165 @@ class AudioRecorderService {
     }
 
     /**
+     * Set progress callback for chunked transcription
+     */
+    setProgressCallback(callback: (progress: TranscriptionProgress) => void): void {
+        this.onProgressCallback = callback;
+    }
+
+    /**
+     * Split an audio blob into chunks of approximately MAX_CHUNK_SIZE_BYTES
+     * Uses time-based splitting for WebM format
+     */
+    private async splitAudioIntoChunks(audioBlob: Blob): Promise<Blob[]> {
+        const blobSize = audioBlob.size;
+
+        // If under the limit, return as-is
+        if (blobSize <= MAX_CHUNK_SIZE_BYTES) {
+            console.log(`Audio size ${(blobSize / 1024 / 1024).toFixed(2)}MB is under limit, no splitting needed`);
+            return [audioBlob];
+        }
+
+        // Calculate number of chunks needed
+        const numChunks = Math.ceil(blobSize / MAX_CHUNK_SIZE_BYTES);
+        const chunkSize = Math.ceil(blobSize / numChunks);
+
+        console.log(`Splitting ${(blobSize / 1024 / 1024).toFixed(2)}MB audio into ${numChunks} chunks of ~${(chunkSize / 1024 / 1024).toFixed(2)}MB each`);
+
+        const chunks: Blob[] = [];
+        const arrayBuffer = await audioBlob.arrayBuffer();
+
+        for (let i = 0; i < numChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, blobSize);
+            const chunkBuffer = arrayBuffer.slice(start, end);
+
+            // Create a new Blob for this chunk
+            const chunkBlob = new Blob([chunkBuffer], { type: audioBlob.type });
+            chunks.push(chunkBlob);
+
+            console.log(`Chunk ${i + 1}/${numChunks}: ${(chunkBlob.size / 1024 / 1024).toFixed(2)}MB`);
+        }
+
+        return chunks;
+    }
+
+    /**
+     * Transcribe a single chunk (internal helper)
+     */
+    private async transcribeSingleChunk(audioBlob: Blob, chunkIndex: number, previousContext?: string): Promise<string> {
+        const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+        if (!apiKey) {
+            throw new Error('Missing GROQ API Key - check your environment variables');
+        }
+
+        const file = new File([audioBlob], `recording_chunk_${chunkIndex}.webm`, { type: audioBlob.type });
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('model', 'whisper-large-v3');
+        formData.append('response_format', 'verbose_json');
+        formData.append('language', 'en');
+        formData.append('temperature', '0');
+
+        // Provide context from previous chunk to improve continuity
+        let prompt = 'This is a sermon or Bible teaching recording. The speaker discusses Scripture, theology, and Christian doctrine.';
+        if (previousContext) {
+            // Add last 100 chars of previous transcript to help with context
+            prompt += ` Previous context: "${previousContext.slice(-100)}"`;
+        }
+        formData.append('prompt', prompt);
+
+        const response = await fetch(GROQ_WHISPER_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Whisper API Error (chunk ${chunkIndex}):`, response.status, errorText);
+            throw new Error(`Transcription failed for chunk ${chunkIndex} (${response.status}): ${errorText.substring(0, 100)}`);
+        }
+
+        const data = await response.json();
+        return data.text || '';
+    }
+
+    /**
+     * Transcribe audio with automatic chunking for long recordings
+     * This is the main method to use for 3+ hour sermons
+     */
+    async transcribeAudioChunked(audioBlob: Blob): Promise<string> {
+        const chunks = await this.splitAudioIntoChunks(audioBlob);
+        const totalChunks = chunks.length;
+
+        console.log(`Starting chunked transcription of ${totalChunks} chunks...`);
+
+        const transcripts: string[] = [];
+        let previousContext = '';
+
+        for (let i = 0; i < chunks.length; i++) {
+            // Report progress
+            if (this.onProgressCallback) {
+                this.onProgressCallback({
+                    currentChunk: i + 1,
+                    totalChunks,
+                    percentComplete: Math.round(((i + 1) / totalChunks) * 100)
+                });
+            }
+
+            console.log(`Transcribing chunk ${i + 1}/${totalChunks}...`);
+
+            try {
+                const transcript = await this.transcribeSingleChunk(chunks[i], i, previousContext);
+                transcripts.push(transcript);
+                previousContext = transcript;
+
+                console.log(`Chunk ${i + 1} complete: ${transcript.substring(0, 50)}...`);
+            } catch (error) {
+                console.error(`Failed to transcribe chunk ${i + 1}:`, error);
+                // Continue with other chunks even if one fails
+                transcripts.push(`[Chunk ${i + 1} transcription failed]`);
+            }
+
+            // Small delay between chunks to avoid rate limiting
+            if (i < chunks.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        // Combine and clean all transcripts
+        const combinedTranscript = transcripts.join(' ');
+        const cleanedTranscript = this.cleanTranscript(combinedTranscript);
+
+        console.log(`Chunked transcription complete. Total length: ${cleanedTranscript.length} characters`);
+
+        return cleanedTranscript;
+    }
+
+    /**
+     * Smart transcribe - automatically uses chunking if needed
+     * Use this as the primary transcription method
+     */
+    async transcribeAudioSmart(audioBlob: Blob): Promise<string> {
+        if (audioBlob.size > MAX_CHUNK_SIZE_BYTES) {
+            console.log(`Large audio detected (${(audioBlob.size / 1024 / 1024).toFixed(2)}MB), using chunked transcription...`);
+            return this.transcribeAudioChunked(audioBlob);
+        } else {
+            return this.transcribeAudio(audioBlob);
+        }
+    }
+
+    /**
      * Legacy method for backward compatibility - stops and transcribes in one call
+     * Now uses smart transcription for long recordings
      */
     async stopRecording(): Promise<RecordingResult> {
         const { audioBlob, duration } = await this.stopRecordingAndGetBlob();
-        const transcript = await this.transcribeAudio(audioBlob);
+        const transcript = await this.transcribeAudioSmart(audioBlob);
         return { transcript, audioBlob, duration };
     }
 

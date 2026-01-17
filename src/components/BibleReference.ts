@@ -2,8 +2,13 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-// Simplified Regex for Bible References (e.g., "John 3:16", "Gen 1:1")
-const BIBLE_REGEX = /\b((?:Genesis|Gen|Exodus|Ex|Leviticus|Lev|Numbers|Num|Deuteronomy|Deut|Joshua|Josh|Judges|Judg|Ruth|1\s?Samuel|1\s?Sam|2\s?Samuel|2\s?Sam|1\s?Kings|1\s?Kgs|2\s?Kings|2\s?Kgs|1\s?Chronicles|1\s?Chron|2\s?Chronicles|2\s?Chron|Ezra|Nehemiah|Neh|Esther|Esth|Job|Psalms|Ps|Proverbs|Prov|Ecclesiastes|Eccl|Song\s?of\s?Solomon|Song|Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|Hosea|Hos|Joel|Amos|Obadiah|Obad|Jonah|Micah|Mic|Nahum|Nah|Habakkuk|Hab|Zephaniah|Zeph|Haggai|Hag|Zechariah|Zech|Malachi|Mal|Matthew|Matt|Mark|Luke|John|Acts|Romans|Rom|1\s?Corinthians|1\s?Cor|2\s?Corinthians|2\s?Cor|Galatians|Gal|Ephesians|Eph|Philippians|Phil|Colossians|Col|1\s?Thessalonians|1\s?Thess|2\s?Thessalonians|2\s?Thess|1\s?Timothy|1\s?Tim|2\s?Timothy|2\s?Tim|Titus|Philemon|Philem|Hebrews|Heb|James|Jas|1\s?Peter|1\s?Pet|2\s?Peter|2\s?Pet|1\s?John|2\s?John|3\s?John|Jude|Revelation|Rev)\.?\s+\d+(?::\d+)?)\b/gi;
+// Enhanced Regex for Bible References supporting multiple formats:
+// - Simple: "John 3:16"
+// - Single chapter: "John 3"
+// - Verse range: "John 3:16-18"
+// - Multi-chapter range: "Numbers 1:2-3:4" (chapter:verse-chapter:verse)
+// - Full chapter range: "Genesis 1-3"
+const BIBLE_REGEX = /\b((?:Genesis|Gen|Exodus|Ex|Leviticus|Lev|Numbers|Num|Deuteronomy|Deut|Joshua|Josh|Judges|Judg|Ruth|1\s?Samuel|1\s?Sam|2\s?Samuel|2\s?Sam|1\s?Kings|1\s?Kgs|2\s?Kings|2\s?Kgs|1\s?Chronicles|1\s?Chron|2\s?Chronicles|2\s?Chron|Ezra|Nehemiah|Neh|Esther|Esth|Job|Psalms?|Ps|Proverbs|Prov|Ecclesiastes|Eccl|Song\s?of\s?Solomon|Song|Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|Hosea|Hos|Joel|Amos|Obadiah|Obad|Jonah|Micah|Mic|Nahum|Nah|Habakkuk|Hab|Zephaniah|Zeph|Haggai|Hag|Zechariah|Zech|Malachi|Mal|Matthew|Matt|Mark|Luke|John|Acts|Romans|Rom|1\s?Corinthians|1\s?Cor|2\s?Corinthians|2\s?Cor|Galatians|Gal|Ephesians|Eph|Philippians|Phil|Colossians|Col|1\s?Thessalonians|1\s?Thess|2\s?Thessalonians|2\s?Thess|1\s?Timothy|1\s?Tim|2\s?Timothy|2\s?Tim|Titus|Philemon|Philem|Hebrews|Heb|James|Jas|1\s?Peter|1\s?Pet|2\s?Peter|2\s?Pet|1\s?John|2\s?John|3\s?John|Jude|Revelation|Rev)\.?\s+\d+(?::\d+)?(?:\s?[-–]\s?\d+(?::\d+)?)?)\b/gi;
 
 export interface BibleOptions {
     onHover?: (verse: string, event: MouseEvent) => void;

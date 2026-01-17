@@ -185,7 +185,8 @@ class FirestoreService {
         }
 
         return onSnapshot(q, (snapshot) => {
-            onData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
+            const notes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note));
+            onData(notes);
         });
     }
 

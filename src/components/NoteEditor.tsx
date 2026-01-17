@@ -391,15 +391,19 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                 onHover: async (verse, event) => {
                     const target = event.target as HTMLElement;
                     const rect = target.getBoundingClientRect();
-                    setHoverVerse({ verse, text: 'Loading...', x: rect.left, y: rect.bottom + 5 });
+                    setHoverVerse({ verse, text: 'Loading ESV...', x: rect.left, y: rect.bottom + 5 });
                     try {
-                        const res = await fetch(`https://bible-api.com/${encodeURIComponent(verse)}`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            setHoverVerse({ verse, text: data.text || 'Verse not found', x: rect.left, y: rect.bottom + 5 });
-                        }
+                        // Use bibleService to get ESV translation
+                        const result = await bibleService.getVerse(verse, 'esv');
+                        setHoverVerse({
+                            verse: result.reference || verse,
+                            text: result.text || 'Verse not found',
+                            x: rect.left,
+                            y: rect.bottom + 5
+                        });
                     } catch (e) {
-                        setHoverVerse(prev => prev ? { ...prev, text: 'Error loading verse' } : null);
+                        console.error('Error loading verse:', e);
+                        setHoverVerse(prev => prev ? { ...prev, text: 'Error loading verse (ESV)' } : null);
                     }
                 }
             }),
@@ -654,15 +658,23 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         saveTimeoutRef.current = setTimeout(() => {
             const { note, title, onSave } = performSaveRef.current;
             if (editor) {
-                // Update current tab content and page settings before saving
+                // First, update current tab content in ref
+                const currentContent = editor.getHTML();
+                tabContentsRef.current.set(activeTabId, currentContent);
+
+                // Build updated tabs array with current content from ref
+                const updatedTabs = tabs.map(t => ({
+                    ...t,
+                    content: t.id === activeTabId ? currentContent : (tabContentsRef.current.get(t.id) || t.content)
+                }));
+
+                // Get current tab settings
                 const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
-                const updatedTabs = tabs.map(t =>
-                    t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
-                );
+
                 onSave({
                     ...note,
                     title,
-                    content: editor.getHTML(),
+                    content: currentContent, // Main content is current tab
                     tabs: updatedTabs,
                     floatingBoxes: floatingBoxes,
                     pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' }
@@ -715,30 +727,64 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     // Tab management functions
     const getCurrentTab = () => tabs.find(t => t.id === activeTabId) || tabs[0];
 
-    const saveCurrentTabContent = () => {
-        if (editor) {
+    // Use a ref to track the current editor content per tab to avoid async issues
+    const tabContentsRef = useRef<Map<string, string>>(new Map());
+
+    // Initialize tabContentsRef from tabs on first render
+    useEffect(() => {
+        tabs.forEach(tab => {
+            if (!tabContentsRef.current.has(tab.id)) {
+                tabContentsRef.current.set(tab.id, tab.content || '');
+            }
+        });
+    }, []);
+
+    const saveCurrentTabContent = useCallback(() => {
+        if (editor && activeTabId) {
+            const currentContent = editor.getHTML();
+            // Save to both ref (immediate) and state (for persistence)
+            tabContentsRef.current.set(activeTabId, currentContent);
             setTabs(prev => prev.map(t =>
-                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+                t.id === activeTabId ? { ...t, content: currentContent } : t
             ));
         }
-    };
+    }, [editor, activeTabId]);
 
-    const switchToTab = (tabId: string) => {
-        if (tabId === activeTabId) return;
+    const switchToTab = useCallback((tabId: string) => {
+        if (tabId === activeTabId || !editor) return;
 
-        // Save current tab content first
-        saveCurrentTabContent();
+        // Save current tab content FIRST (synchronously to ref)
+        const currentContent = editor.getHTML();
+        tabContentsRef.current.set(activeTabId, currentContent);
+
+        // Also update state
+        setTabs(prev => prev.map(t =>
+            t.id === activeTabId ? { ...t, content: currentContent } : t
+        ));
+
+        // Get the new tab's content from ref (most up-to-date)
+        const newTabContent = tabContentsRef.current.get(tabId) ||
+            tabs.find(t => t.id === tabId)?.content || '';
 
         // Switch to new tab
         setActiveTabId(tabId);
-        const newTab = tabs.find(t => t.id === tabId);
-        if (newTab && editor) {
-            editor.commands.setContent(newTab.content || '');
-        }
-    };
 
-    const addNewTab = () => {
-        saveCurrentTabContent();
+        // Load new tab's content into editor
+        editor.commands.setContent(newTabContent);
+
+        console.log(`Switched from tab ${activeTabId} to ${tabId}`);
+    }, [activeTabId, editor, tabs]);
+
+    const addNewTab = useCallback(() => {
+        // Save current tab content first
+        if (editor && activeTabId) {
+            const currentContent = editor.getHTML();
+            tabContentsRef.current.set(activeTabId, currentContent);
+            setTabs(prev => prev.map(t =>
+                t.id === activeTabId ? { ...t, content: currentContent } : t
+            ));
+        }
+
         const newTabId = `tab-${Date.now()}`;
         const newTab = {
             id: newTabId,
@@ -746,12 +792,17 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             content: '',
             pageSettings: { orientation: 'portrait' as const, marginSize: 'normal' as const }
         };
+
+        // Initialize new tab in ref
+        tabContentsRef.current.set(newTabId, '');
+
         setTabs(prev => [...prev, newTab]);
         setActiveTabId(newTabId);
+
         if (editor) {
             editor.commands.setContent('');
         }
-    };
+    }, [editor, activeTabId, tabs.length]);
 
     const deleteTab = (tabId: string) => {
         if (tabs.length <= 1) {
@@ -1273,7 +1324,9 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
             {/* Formatting Ribbon - Google Docs Style */}
             {editor && (
-                <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-4 bg-zinc-900/95 backdrop-blur sticky top-12 z-10 shrink-0 overflow-x-auto custom-scrollbar">
+                <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-4 bg-zinc-900/95 backdrop-blur sticky top-12 z-20 shrink-0 overflow-visible"
+                    style={{ overflowX: 'clip', overflowY: 'visible' }}
+                >
                     {/* Text formatting */}
                     <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
                         <button onClick={() => editor.chain().focus().toggleBold().run()} className={cn("p-1.5 hover:bg-zinc-800 rounded transition-colors", editor.isActive('bold') && "text-blue-400 bg-blue-500/10")} title="Bold (Ctrl+B)"><Bold className="w-4 h-4" /></button>
@@ -1337,6 +1390,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {/* Highlighter with color picker */}
                     <div className="relative border-r border-zinc-700/50 pr-2 mr-1">
                         <button
+                            id="highlighter-button"
                             onClick={() => setShowHighlighterPicker(!showHighlighterPicker)}
                             className={cn("p-1.5 hover:bg-zinc-800 rounded flex items-center gap-0.5 transition-colors", editor.isActive('highlight') && "text-amber-400 bg-amber-500/10")}
                             title="Highlight"
@@ -1345,17 +1399,45 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                             <ChevronDown className="w-2 h-2" />
                         </button>
                         {showHighlighterPicker && (
-                            <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-3 z-[100] flex flex-col gap-2 min-w-[180px]">
+                            <div
+                                className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] flex flex-col gap-2"
+                                style={{
+                                    width: 200,
+                                    top: (() => {
+                                        const btn = document.getElementById('highlighter-button');
+                                        if (btn) {
+                                            const rect = btn.getBoundingClientRect();
+                                            return rect.bottom + 4;
+                                        }
+                                        return 100;
+                                    })(),
+                                    left: (() => {
+                                        const btn = document.getElementById('highlighter-button');
+                                        if (btn) {
+                                            const rect = btn.getBoundingClientRect();
+                                            const dropdownWidth = 200;
+                                            // Check if it would go off the right edge
+                                            const rightEdge = rect.left + dropdownWidth;
+                                            if (rightEdge > window.innerWidth - 16) {
+                                                // Position from right edge of button instead
+                                                return Math.max(8, rect.right - dropdownWidth);
+                                            }
+                                            return Math.max(8, rect.left);
+                                        }
+                                        return 100;
+                                    })()
+                                }}
+                            >
                                 <div className="text-xs text-zinc-500 font-medium mb-1">Highlight Color</div>
-                                <div className="flex gap-1.5 flex-wrap">
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50" title="Yellow" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-green-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-green-400/50" title="Green" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-cyan-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-cyan-400/50" title="Cyan" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-pink-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-pink-400/50" title="Pink" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-orange-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-orange-400/50" title="Orange" />
-                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#a855f7' }).run(); setShowHighlighterPicker(false); }} className="w-6 h-6 rounded-full bg-purple-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-purple-400/50" title="Purple" />
+                                <div className="flex gap-2 flex-wrap">
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50" title="Yellow" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ff00' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-green-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-green-400/50" title="Green" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#00ffff' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-cyan-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-cyan-400/50" title="Cyan" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ff69b4' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-pink-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-pink-400/50" title="Pink" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffa500' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-orange-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-orange-400/50" title="Orange" />
+                                    <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#a855f7' }).run(); setShowHighlighterPicker(false); }} className="w-7 h-7 rounded-full bg-purple-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-purple-400/50" title="Purple" />
                                 </div>
-                                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
+                                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 mt-1">
                                     <input
                                         type="color"
                                         value={highlighterColor}
