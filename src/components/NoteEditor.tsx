@@ -1325,7 +1325,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             {/* Formatting Ribbon - Google Docs Style */}
             {editor && (
                 <div className="h-10 border-b border-zinc-800 flex items-center gap-1 px-4 bg-zinc-900/95 backdrop-blur sticky top-12 z-20 shrink-0 overflow-visible"
-                    style={{ overflowX: 'clip', overflowY: 'visible' }}
                 >
                     {/* Text formatting */}
                     <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
@@ -1404,7 +1403,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                                     className="fixed inset-0 z-[9998]"
                                     onClick={() => setShowHighlighterPicker(false)}
                                 />
-                                <div className="absolute top-full right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] w-[200px]">
+                                <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] w-[200px]">
                                     <div className="text-xs text-zinc-500 font-medium mb-2">Highlight Color</div>
                                     <div className="grid grid-cols-3 gap-2">
                                         <button onClick={() => { editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run(); setShowHighlighterPicker(false); }} className="w-8 h-8 rounded-full bg-yellow-400 hover:scale-110 transition-transform ring-2 ring-transparent hover:ring-yellow-400/50 mx-auto" title="Yellow" />
