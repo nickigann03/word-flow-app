@@ -214,17 +214,25 @@ export function Dashboard() {
                         onInsertComplete={() => setPendingInsert(null)}
                     />
                 ) : view === 'templates' ? (
-                    <div className="p-8">
-                        <h2 className="text-2xl font-bold mb-6">Choose a Template</h2>
-                        <div className="grid grid-cols-3 gap-6">
-                            {['Blank', '3-Point Sermon', 'Expository'].map(t => (
-                                <div key={t} onClick={() => handleCreateNote(t === 'Blank' ? '' : `## ${t}\n\n`)} className="p-6 bg-zinc-900 border border-zinc-800 hover:border-blue-500 cursor-pointer rounded-xl transition-all">
-                                    <LayoutTemplate className="w-8 h-8 mb-4 text-zinc-500" />
-                                    <h3 className="font-bold">{t}</h3>
+                    <div className="p-8 h-full overflow-y-auto">
+                        <h2 className="text-2xl font-bold mb-2 text-white">Choose a Template</h2>
+                        <p className="text-zinc-500 mb-6">Select a template to get started with your new note</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {getAllTemplates().map(template => (
+                                <div
+                                    key={template.id}
+                                    onClick={() => handleCreateNote(template.content)}
+                                    className="group p-6 bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/50 hover:bg-zinc-900 cursor-pointer rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/10"
+                                >
+                                    <div className="w-12 h-12 mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center group-hover:from-blue-500/30 group-hover:to-purple-500/30 transition-all">
+                                        <LayoutTemplate className="w-6 h-6 text-blue-400 group-hover:text-blue-300" />
+                                    </div>
+                                    <h3 className="font-bold text-lg text-zinc-100 group-hover:text-blue-400 transition-colors mb-2">{template.name}</h3>
+                                    <p className="text-sm text-zinc-500 line-clamp-2">{template.description}</p>
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => setView('list')} className="mt-8 text-zinc-500 hover:text-white">Cancel</button>
+                        <button onClick={() => setView('list')} className="mt-8 text-zinc-500 hover:text-white transition-colors">← Back to Notes</button>
                     </div>
                 ) : (
                     /* List View */
