@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthProvider } from '@/contexts/SupabaseAuthContext'
 import { ToastProvider } from '@/components/Toast'
 
 export const metadata: Metadata = {

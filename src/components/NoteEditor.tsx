@@ -40,12 +40,7 @@ import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
 import bibleService from '@/services/bibleService';
 import audioRecorderService from '@/services/audioRecorderService';
-import { Note } from '@/services/firestoreService';
-import firestoreService from '@/services/firestoreService';
-
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { v4 as uuidv4 } from 'uuid';
+import supabaseService, { Note } from '@/services/supabaseService';
 import { useToast } from './Toast';
 
 const lowlight = createLowlight(common);
@@ -555,34 +550,33 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     view.dispatch(transaction);
 
                     // Upload in background
-                    const id = uuidv4();
-                    const storageRef = ref(storage, `images/${note.userId}/${id}`);
+                    // Upload in background
                     setAiLoading(true);
 
-                    uploadBytes(storageRef, file).then(async () => {
-                        const downloadUrl = await getDownloadURL(storageRef);
+                    supabaseService.uploadImage(note.userId, file)
+                        .then((downloadUrl) => {
+                            // Find the image with the blob URL and replace its source
+                            // We need to search the doc because the position might have changed
+                            view.state.doc.descendants((node, pos) => {
+                                if (node.type.name === 'image' && node.attrs.src === blobUrl) {
+                                    const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+                                        ...node.attrs,
+                                        src: downloadUrl
+                                    });
+                                    view.dispatch(tr);
+                                    return false; // Stop searching
+                                }
+                            });
 
-                        // Find the image with the blob URL and replace its source
-                        // We need to search the doc because the position might have changed
-                        view.state.doc.descendants((node, pos) => {
-                            if (node.type.name === 'image' && node.attrs.src === blobUrl) {
-                                const tr = view.state.tr.setNodeMarkup(pos, undefined, {
-                                    ...node.attrs,
-                                    src: downloadUrl
-                                });
-                                view.dispatch(tr);
-                                return false; // Stop searching
-                            }
+                            setAiLoading(false);
+                            toast.success('Image Uploaded', 'Sync complete');
+                        })
+                        .catch(e => {
+                            console.error('Upload failed', e);
+                            setAiLoading(false);
+                            toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
+                            // Optional: Mark image as error or remove it
                         });
-
-                        setAiLoading(false);
-                        toast.success('Image Uploaded', 'Sync complete');
-                    }).catch(e => {
-                        console.error('Upload failed', e);
-                        setAiLoading(false);
-                        toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
-                        // Optional: Mark image as error or remove it
-                    });
 
                     return true;
                 }
@@ -609,31 +603,30 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         }
 
                         // Upload in background
-                        const id = uuidv4();
-                        const storageRef = ref(storage, `images/${note.userId}/${id}`);
+                        // Upload in background
                         setAiLoading(true);
 
-                        uploadBytes(storageRef, file).then(async () => {
-                            const downloadUrl = await getDownloadURL(storageRef);
+                        supabaseService.uploadImage(note.userId, file)
+                            .then((downloadUrl) => {
+                                view.state.doc.descendants((node, pos) => {
+                                    if (node.type.name === 'image' && node.attrs.src === blobUrl) {
+                                        const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+                                            ...node.attrs,
+                                            src: downloadUrl
+                                        });
+                                        view.dispatch(tr);
+                                        return false;
+                                    }
+                                });
 
-                            view.state.doc.descendants((node, pos) => {
-                                if (node.type.name === 'image' && node.attrs.src === blobUrl) {
-                                    const tr = view.state.tr.setNodeMarkup(pos, undefined, {
-                                        ...node.attrs,
-                                        src: downloadUrl
-                                    });
-                                    view.dispatch(tr);
-                                    return false;
-                                }
+                                setAiLoading(false);
+                                toast.success('Image Uploaded', 'Sync complete');
+                            })
+                            .catch(e => {
+                                console.error('Upload failed', e);
+                                setAiLoading(false);
+                                toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
                             });
-
-                            setAiLoading(false);
-                            toast.success('Image Uploaded', 'Sync complete');
-                        }).catch(e => {
-                            console.error('Upload failed', e);
-                            setAiLoading(false);
-                            toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
-                        });
 
                         return true;
                     }
@@ -983,16 +976,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
             toast.updateToast(loadingToast, { title: 'Uploading Audio', message: 'Saving to cloud...' });
 
-            // STEP 2: Upload to Firebase Storage
+            // STEP 2: Upload to Supabase Storage
             try {
-                const audioId = uuidv4();
-                const storageRef = ref(storage, `recordings/${note.userId}/${audioId}.webm`);
-                await uploadBytes(storageRef, audioBlob);
-                audioUrl = await getDownloadURL(storageRef);
-                console.log('Audio uploaded to Firebase:', audioUrl);
+                const audioId = crypto.randomUUID();
+                const filename = `${audioId}.webm`;
+                audioUrl = await supabaseService.uploadAudio(note.userId, audioBlob, filename);
+                console.log('Audio uploaded to Supabase:', audioUrl);
             } catch (uploadError) {
-                console.warn('Firebase upload failed (CORS?), downloading locally instead:', uploadError);
-                // Fallback: download locally if Firebase fails
+                console.warn('Supabase upload failed, downloading locally instead:', uploadError);
+                // Fallback: download locally if upload fails
                 const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
                 const filename = `sermon-${timestamp}.webm`;
                 audioRecorderService.downloadRecording(audioBlob, filename);
@@ -1025,8 +1017,9 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             console.error('Transcription failed:', transcriptError);
 
             // Save to library even without transcript (so user can access audio)
+            // Save to library even without transcript (so user can access audio)
             try {
-                await firestoreService.saveRecording(note.userId, {
+                await supabaseService.saveRecording(note.userId, {
                     noteId: note.id,
                     noteTitle: title || 'Untitled Recording',
                     audioUrl: audioUrl || undefined,
@@ -1064,7 +1057,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
         // STEP 4: Save recording to library WITH transcript
         try {
-            await firestoreService.saveRecording(note.userId, {
+            await supabaseService.saveRecording(note.userId, {
                 noteId: note.id,
                 noteTitle: title || 'Untitled Recording',
                 audioUrl: audioUrl || undefined,

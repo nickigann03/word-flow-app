@@ -29,20 +29,14 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-REM Get project ID from user
-set /p PROJECT_ID=Enter your Firebase Project ID: 
-
-if "%PROJECT_ID%"=="" (
-    echo ERROR: Project ID cannot be empty
-    pause
-    exit /b 1
-)
+REM Your Firebase Storage bucket (new format)
+set BUCKET=sermon-recording-b79d4.firebasestorage.app
 
 echo.
-echo Applying CORS configuration to gs://%PROJECT_ID%.appspot.com ...
+echo Applying CORS configuration to gs://%BUCKET% ...
 echo.
 
-gsutil cors set cors.json gs://%PROJECT_ID%.appspot.com
+gsutil cors set cors.json gs://%BUCKET%
 
 if %ERRORLEVEL% equ 0 (
     echo.
@@ -51,7 +45,7 @@ if %ERRORLEVEL% equ 0 (
     echo ================================================
     echo.
     echo Verifying configuration...
-    gsutil cors get gs://%PROJECT_ID%.appspot.com
+    gsutil cors get gs://%BUCKET%
     echo.
     echo Your Firebase Storage should now accept requests from:
     echo  - https://word-flow-app.vercel.app
@@ -64,8 +58,8 @@ if %ERRORLEVEL% equ 0 (
     echo.
     echo Possible fixes:
     echo 1. Make sure you're logged in: gcloud auth login
-    echo 2. Set your project: gcloud config set project %PROJECT_ID%
-    echo 3. Verify bucket exists: gsutil ls gs://%PROJECT_ID%.appspot.com
+    echo 2. Set your project: gcloud config set project sermon-recording-b79d4
+    echo 3. Verify bucket exists: gsutil ls gs://%BUCKET%
     echo.
 )
 

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Download, Copy, Trash2, Clock, FileAudio, CheckCircle, X, ChevronDown, ChevronUp } from 'lucide-react';
-import firestoreService, { Recording } from '@/services/firestoreService';
+import supabaseService, { Recording } from '@/services/supabaseService';
 import audioRecorderService from '@/services/audioRecorderService';
 import { useToast } from './Toast';
 
@@ -20,7 +20,7 @@ export default function RecordingsLibrary({ userId, onClose }: RecordingsLibrary
     useEffect(() => {
         if (!userId) return;
 
-        const unsubscribe = firestoreService.subscribeRecordings(userId, (data) => {
+        const unsubscribe = supabaseService.subscribeRecordings(userId, (data) => {
             setRecordings(data);
             setLoading(false);
         });
@@ -74,7 +74,7 @@ export default function RecordingsLibrary({ userId, onClose }: RecordingsLibrary
         if (!confirm('Delete this recording? This cannot be undone.')) return;
 
         try {
-            await firestoreService.deleteRecording(recordingId);
+            await supabaseService.deleteRecording(recordingId);
             toast.success('Deleted', 'Recording removed');
         } catch (error) {
             toast.error('Delete Failed', (error as Error).message);

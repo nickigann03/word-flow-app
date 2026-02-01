@@ -16,9 +16,9 @@ import {
     Mic
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useState } from 'react';
-import { Folder } from '@/services/firestoreService';
+import { Folder } from '@/services/supabaseService';
 
 interface SidebarProps {
     folders: Folder[];

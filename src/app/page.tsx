@@ -1,5 +1,5 @@
 "use client"
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Dashboard } from '@/components/Dashboard';
 import { LandingPage } from '@/components/LandingPage';
 import { Loader2 } from 'lucide-react';

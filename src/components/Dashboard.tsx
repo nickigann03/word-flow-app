@@ -5,8 +5,8 @@ import { NoteEditor } from './NoteEditor';
 import { BibleReader } from './BibleReaderPanel';
 import { ReformedAIChat } from './ReformedAIChat';
 import RecordingsLibrary from './RecordingsLibrary';
-import { useAuth } from '@/contexts/AuthContext';
-import firestoreService, { Folder, Note } from '@/services/firestoreService';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import supabaseService, { Folder, Note } from '@/services/supabaseService';
 import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getAllTemplates } from '@/data/sermonTemplates';
@@ -55,7 +55,7 @@ export function Dashboard() {
             return;
         }
 
-        const unsubscribe = firestoreService.subscribeFolders(user.uid, (data) => {
+        const unsubscribe = supabaseService.subscribeFolders(user.uid, (data) => {
             setFolders(data);
         });
         return () => unsubscribe();
@@ -70,7 +70,7 @@ export function Dashboard() {
 
         const folderToQuery = selectedFolder === 'recent' || selectedFolder === 'all' ? selectedFolder : selectedFolder;
         // Logic inside service handles 'recent'/'all' vs specific ID
-        const unsubscribe = firestoreService.subscribeNotes(user.uid, folderToQuery, (data) => {
+        const unsubscribe = supabaseService.subscribeNotes(user.uid, folderToQuery, (data) => {
             setNotes(data);
         });
         return () => unsubscribe();
@@ -90,7 +90,7 @@ export function Dashboard() {
         }
 
         // Optimistic UI Update
-        const newId = firestoreService.getNewNoteId();
+        const newId = supabaseService.getNewNoteId();
         const newNote = {
             id: newId,
             title: 'Untitled Note',
@@ -111,7 +111,7 @@ export function Dashboard() {
         setView('editor');
 
         // Background Sync
-        firestoreService.createNote(user.uid, newNote, newId)
+        supabaseService.createNote(user.uid, newNote, newId)
             .catch(error => {
                 console.error('Failed to create note in background:', error);
                 // Rollback
@@ -132,7 +132,7 @@ export function Dashboard() {
         setCurrentNoteContent(updated.content || '');
 
         try {
-            await firestoreService.updateNote(updated.id, {
+            await supabaseService.updateNote(updated.id, {
                 title: updated.title,
                 content: updated.content
             });
@@ -157,7 +157,7 @@ export function Dashboard() {
         }
 
         // Background Sync (Subscription handles UI removal instantly)
-        firestoreService.deleteNote(noteId)
+        supabaseService.deleteNote(noteId)
             .then(() => {
                 toast.success('Note Deleted', 'Note removed permanently');
                 if (selectedNote?.id === noteId) {
@@ -329,7 +329,7 @@ export function Dashboard() {
                         e.preventDefault();
                         if (!createFolderName.trim() || !user) return;
 
-                        const newId = firestoreService.getNewFolderId();
+                        const newId = supabaseService.getNewFolderId();
                         const newFolder: Folder = { id: newId, title: createFolderName, userId: user.uid, createdAt: new Date() };
 
 
@@ -339,7 +339,7 @@ export function Dashboard() {
                         setIsCreateFolderOpen(false);
 
                         // 2. Background Sync
-                        firestoreService.createFolder(user.uid, { title: createFolderName }, newId)
+                        supabaseService.createFolder(user.uid, { title: createFolderName }, newId)
                             .catch(e => {
                                 console.error('Folder sync failed', e);
                                 // Rollback
@@ -411,11 +411,11 @@ export function Dashboard() {
 
                                 // 2. Background Sync
                                 try {
-                                    await firestoreService.deleteFolder(idToDelete);
+                                    await supabaseService.deleteFolder(idToDelete);
                                     toast.updateToast(toastId, { title: 'Folder Deleted', type: 'success' });
                                 } catch (e) {
                                     toast.updateToast(toastId, { title: 'Failed to delete folder', message: (e as Error).message || 'Could not delete folder', type: 'error' });
-                                    const freshFolders = await firestoreService.getFolders(user?.uid || '');
+                                    const freshFolders = await supabaseService.getFolders(user?.uid || '');
                                     setFolders(freshFolders);
                                 }
                             }}
