@@ -1,5 +1,5 @@
 "use client"
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { ArrowRight, Mic, BookOpen, Layers } from 'lucide-react';
 
 export function LandingPage() {
