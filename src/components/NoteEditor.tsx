@@ -1414,8 +1414,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                 <LayoutTemplate className="w-5 h-5" />
                             </button>
                         )}
-                        <span className="text-xs text-zinc-500 mr-2">
-                            {saveStatus === 'saving' ? 'Saving...' : 'Saved'}
+                        <span className="text-xs text-zinc-600 mr-2">
+                            Auto-saved
                         </span>
                     </div>
 
