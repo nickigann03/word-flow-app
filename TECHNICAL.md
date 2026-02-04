@@ -23,7 +23,8 @@ WordFlow is a modern Next.js 14 application built for sermon preparation and the
 - **Engine**: Tiptap Editor (Headless wrapper around Prosemirror)
 - **Features**:
   - **Slash Commands**: Notion-style menu for rapid formatting.
-  - **Bible Integration**: Auto-fetch passages (ESV) via `bibleService`.
+  - **Layout Persistence**: Page orientation (Portrait/Landscape) and margins (Narrow/Wide) are saved per-note in local storage for a consistent experience.
+  - **Bible Integration**: Auto-fetch passages via `bibleService`. The "Interactive Reader" mode splits text into individual words to enable AI-powered dictionary lookup on hover/click.
   - **Reformed AI Chat**: Side-panel assistant with "Direct Teaching" and "Socratic Mode".
   - **Tabs**: Internal tabs within a single note for multi-page sermon outlines.
   - **Floating Elements**: Draggable text boxes for annotations.

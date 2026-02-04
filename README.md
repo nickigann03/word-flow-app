@@ -23,6 +23,8 @@ WordFlow is a specialized writing and study environment designed for efficient s
 
 ### 📖 Bible Integration
 - **Auto-Verse**: Type a reference (e.g., "John 3:16") to see the text instantly.
+- **Deep-Dive Dictionary**: Click or hover over any word in the Bible Reader (ESV, KJV, etc.) to see its Definition, Greek/Hebrew original, and theological meaning.
+- **Manuscript Mode**: Generate a specially formatted, line-spaced manuscript for preaching directly from a Bible passage.
 - **Full Chapter Import**: Import entire chapters for exegesis.
 
 ## 🛠️ Technology Stack
