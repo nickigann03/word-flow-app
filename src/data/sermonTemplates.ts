@@ -17,7 +17,7 @@ const getTodayFormatted = () => {
     return today.toLocaleDateString('en-US', options);
 };
 
-export const templates: Template[] = [
+export const BASE_TEMPLATES: Template[] = [
     {
         id: 'blank',
         name: 'Blank Document',
@@ -61,52 +61,6 @@ export const templates: Template[] = [
 <p><em>How does this apply to my life?</em></p>
 
 <p></p>
-`
-    },
-    {
-        id: '3-point',
-        name: '3-Point Sermon Outline',
-        description: 'Classic homiletic structure for preparing sermons.',
-        content: `<h1>Sermon Title</h1>
-
-<p><strong>📅 Date:</strong> ${getTodayFormatted()}</p>
-<p><strong>📖 Main Text:</strong> [Insert Verse]</p>
-
-<hr>
-
-<h2>Introduction</h2>
-<ul>
-<li><strong>Hook:</strong> </li>
-<li><strong>Context:</strong> </li>
-<li><strong>Proposition:</strong> </li>
-</ul>
-
-<h2>I. Point One</h2>
-<ul>
-<li><strong>Explanation:</strong> </li>
-<li><strong>Illustration:</strong> </li>
-<li><strong>Application:</strong> </li>
-</ul>
-
-<h2>II. Point Two</h2>
-<ul>
-<li><strong>Explanation:</strong> </li>
-<li><strong>Illustration:</strong> </li>
-<li><strong>Application:</strong> </li>
-</ul>
-
-<h2>III. Point Three</h2>
-<ul>
-<li><strong>Explanation:</strong> </li>
-<li><strong>Illustration:</strong> </li>
-<li><strong>Application:</strong> </li>
-</ul>
-
-<h2>Conclusion</h2>
-<ul>
-<li><strong>Summary:</strong> </li>
-<li><strong>Call to Action:</strong> </li>
-</ul>
 `
     },
     {
@@ -163,4 +117,4 @@ export const templates: Template[] = [
     }
 ];
 
-export const getAllTemplates = () => templates;
+export const getAllTemplates = () => BASE_TEMPLATES;

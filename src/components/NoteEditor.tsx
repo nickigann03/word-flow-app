@@ -36,7 +36,7 @@ import {
     Table as TableIcon, CheckSquare, Code, Minus, Type,
     Info, AlertTriangle, CheckCircle, XCircle,
     RowsIcon, ColumnsIcon, Trash2, Plus, Indent as IndentIcon,
-    Subscript as SubIcon, Superscript as SupIcon, Pilcrow, Link as LinkIcon
+    Subscript as SubIcon, Superscript as SupIcon, Pilcrow, Link as LinkIcon, LayoutTemplate
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
@@ -52,6 +52,7 @@ interface NoteEditorProps {
     onSave: (note: Note) => void;
     onExport?: (format: 'pdf' | 'md', note: Note) => void;
     onDelete?: () => void;
+    onSaveAsTemplate?: (note: Note) => void;
     pendingInsert?: { text: string; reference: string } | null;
     onInsertComplete?: () => void;
 }
@@ -274,7 +275,7 @@ const slashCommands: SlashCommand[] = [
     },
 ];
 
-export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, onInsertComplete }: NoteEditorProps) {
+export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate, pendingInsert, onInsertComplete }: NoteEditorProps) {
     const [title, setTitle] = useState(note.title);
     const [aiLoading, setAiLoading] = useState(false);
     const [exegeteResult, setExegeteResult] = useState<{ definition: string, verse: string } | null>(null);
@@ -1393,6 +1394,30 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                         )}
                     </div>
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
+
+                    {/* Save as Template Button and Save Status */}
+                    <div className="flex items-center gap-2">
+                        {onSaveAsTemplate && (
+                            <button
+                                onClick={() => {
+                                    // Construct current note state
+                                    const currentNote = {
+                                        ...note,
+                                        content: editor?.getHTML() || '',
+                                        title: title
+                                    };
+                                    onSaveAsTemplate(currentNote);
+                                }}
+                                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                                title="Save as Template"
+                            >
+                                <LayoutTemplate className="w-5 h-5" />
+                            </button>
+                        )}
+                        <span className="text-xs text-zinc-500 mr-2">
+                            {saveStatus === 'saving' ? 'Saving...' : 'Saved'}
+                        </span>
+                    </div>
 
                     {/* Sermon Recording Button */}
                     {isSermonRecording ? (

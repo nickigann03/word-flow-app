@@ -27,6 +27,14 @@ WordFlow is a specialized writing and study environment designed for efficient s
 - **Manuscript Mode**: Generate a specially formatted, line-spaced manuscript for preaching directly from a Bible passage.
 - **Full Chapter Import**: Import entire chapters for exegesis.
 
+### 📝 Custom Templates
+- **Save Your Own Templates**: Create a note layout once (e.g., your personal sermon structure) and save it as a reusable template.
+- **Instant Access**: All custom templates appear in the "New Note" screen alongside built-in options.
+
+### 🛡️ Offline Mode & Data Safety
+- **Works Offline**: Your notes are cached locally. If your internet drops or the backend is unavailable, you can still view your previously loaded notes.
+- **Guest/Demo Mode**: Try the app without signing up by clicking "Try Demo" on the landing page.
+
 ## 🛠️ Technology Stack
 
 - **Frontend**: Next.js 14, React, TailwindCSS

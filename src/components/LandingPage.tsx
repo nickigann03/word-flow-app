@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { ArrowRight, Mic, BookOpen, Layers } from 'lucide-react';
 
 export function LandingPage() {
-    const { loginWithGoogle } = useAuth();
+    const { loginWithGoogle, loginAsGuest } = useAuth();
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white selection:bg-blue-500/30">
@@ -54,8 +54,11 @@ export function LandingPage() {
                         >
                             Get Started <ArrowRight className="w-4 h-4" />
                         </button>
-                        <button className="h-12 px-8 rounded-full border border-zinc-800 bg-zinc-900/50 text-white font-medium hover:bg-zinc-900 transition-colors">
-                            Live Demo
+                        <button
+                            onClick={() => loginAsGuest()}
+                            className="h-12 px-8 rounded-full border border-zinc-800 bg-zinc-900/50 text-white font-medium hover:bg-zinc-900 transition-colors"
+                        >
+                            Try Demo
                         </button>
                     </div>
                 </div>

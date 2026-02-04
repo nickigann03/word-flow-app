@@ -9,7 +9,8 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import supabaseService, { Folder, Note } from '@/services/supabaseService';
 import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getAllTemplates } from '@/data/sermonTemplates';
+import { BASE_TEMPLATES } from '@/data/sermonTemplates';
+import type { Template } from '@/data/sermonTemplates';
 import { useToast } from './Toast';
 import { Modal } from './Modal';
 
@@ -45,6 +46,7 @@ export function Dashboard() {
     const [createFolderName, setCreateFolderName] = useState('');
     const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
     const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+    const [customTemplates, setCustomTemplates] = useState<Template[]>([]);
 
     // Reference to the NoteEditor for inserting content
     const [pendingInsert, setPendingInsert] = useState<{ text: string; reference: string } | null>(null);
@@ -52,16 +54,29 @@ export function Dashboard() {
     // Track current note content for AI context
     const [currentNoteContent, setCurrentNoteContent] = useState<string>('');
 
-    // Subscribe to Folders
+    // Subscribe to Folders and Custom Templates
     useEffect(() => {
         if (!user?.uid) {
             setFolders([]);
+            setCustomTemplates([]);
             return;
         }
 
-        const unsubscribe = supabaseService.subscribeFolders(user.uid, (data) => {
-            setFolders(data);
+        // Fetch custom templates (notes with tag 'template')
+        // We do a separate fetch here to ensure they are available regardless of current folder view
+        supabaseService.getNotes(user.uid).then(allNotes => {
+            const templates = allNotes
+                .filter(n => n.tags?.includes('template'))
+                .map(n => ({
+                    id: n.id || 'unknown',
+                    name: n.title,
+                    description: 'Custom Template',
+                    content: n.content
+                }));
+            setCustomTemplates(templates);
         });
+
+        const unsubscribe = supabaseService.subscribeFolders(user.uid, setFolders);
         return () => unsubscribe();
     }, [user]);
 
@@ -181,6 +196,37 @@ export function Dashboard() {
                 setNotes(previousNotes);
                 toast.error('Delete Failed', 'Could not delete note from server');
             });
+    };
+
+    const handleSaveAsTemplate = async (note: Note) => {
+        if (!user) return;
+
+        const templateName = prompt("Enter a name for your template:", note.title);
+        if (!templateName) return;
+
+        const newId = supabaseService.getNewNoteId();
+        const templateNote: Note = {
+            ...note,
+            id: newId,
+            title: templateName,
+            tags: [...(note.tags || []).filter(t => t !== 'template'), 'template'], // Ensure it has template tag
+            folderId: null, // Templates don't belong to folders usually, or maybe a 'Templates' folder?
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        // UI Update
+        const newTemplate: Template = {
+            id: newId,
+            name: templateName,
+            description: 'Custom saved template',
+            content: note.content
+        };
+        setCustomTemplates(prev => [newTemplate, ...prev]);
+        toast.success("Template Saved", "Your custom template is ready to use.");
+
+        // Background
+        await supabaseService.createNote(user.uid, templateNote, newId);
     };
 
     // Handler for inserting verses from Bible Reader or AI Chat
@@ -311,6 +357,7 @@ export function Dashboard() {
                         onSave={handleSaveNote}
                         onDelete={() => selectedNote.id && handleDeleteNote(selectedNote.id)}
                         onExport={(fmt, note) => console.log('Export', fmt)}
+                        onSaveAsTemplate={handleSaveAsTemplate}
                         pendingInsert={pendingInsert}
                         onInsertComplete={() => setPendingInsert(null)}
                     />
@@ -319,7 +366,7 @@ export function Dashboard() {
                         <h2 className="text-2xl font-bold mb-2 text-white">Choose a Template</h2>
                         <p className="text-zinc-500 mb-6">Select a template to get started with your new note</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {getAllTemplates().map(template => (
+                            {[...BASE_TEMPLATES, ...customTemplates].map(template => (
                                 <div
                                     key={template.id}
                                     onClick={() => {

@@ -140,14 +140,29 @@ class SupabaseService {
     }
 
     async getFolders(userId: string): Promise<Folder[]> {
-        const { data, error } = await supabase
-            .from('folders')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
+        const cacheKey = `cache_folders_${userId}`;
+        try {
+            const { data, error } = await supabase
+                .from('folders')
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        return (data || []).map(toFolder);
+            if (error) throw error;
+
+            const folders = (data || []).map(toFolder);
+            localStorage.setItem(cacheKey, JSON.stringify(folders));
+            return folders;
+        } catch (error) {
+            console.warn('Offline Mode: Loading folders from cache', error);
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) return JSON.parse(cached);
+            // If no cache and network error, return empty to prevent crash, or throw?
+            // Returning empty might be confusing (user thinks data lost). 
+            // Better to throw if absolutely no data.
+            if (cached === null) throw error;
+            return [];
+        }
     }
 
     async updateFolder(folderId: string, data: Partial<{ title: string }>): Promise<void> {
@@ -236,25 +251,57 @@ class SupabaseService {
     }
 
     async getNotes(userId: string): Promise<Note[]> {
-        const { data, error } = await supabase
-            .from('notes')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
+        const cacheKey = `cache_notes_${userId}`;
+        try {
+            const { data, error } = await supabase
+                .from('notes')
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        return (data || []).map(toNote);
+            if (error) throw error;
+
+            const notes = (data || []).map(toNote);
+            localStorage.setItem(cacheKey, JSON.stringify(notes));
+            return notes;
+        } catch (error) {
+            console.warn('Offline Mode: Loading notes from cache', error);
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                // Return cached notes, but we need to ensure dates are Dates
+                const parsed = JSON.parse(cached);
+                return parsed.map((n: any) => ({
+                    ...n,
+                    createdAt: n.createdAt ? new Date(n.createdAt) : undefined,
+                    updatedAt: n.updatedAt ? new Date(n.updatedAt) : undefined
+                }));
+            }
+            if (cached === null) throw error;
+            return [];
+        }
     }
 
     async getNotesByFolder(folderId: string): Promise<Note[]> {
-        const { data, error } = await supabase
-            .from('notes')
-            .select('*')
-            .eq('folder_id', folderId)
-            .order('created_at', { ascending: false });
+        try {
+            const { data, error } = await supabase
+                .from('notes')
+                .select('*')
+                .eq('folder_id', folderId)
+                .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        return (data || []).map(toNote);
+            if (error) throw error;
+            return (data || []).map(toNote);
+        } catch (error) {
+            console.warn('Offline Mode: Loading folder notes from global cache', error);
+            // Try to find in global notes cache
+            // We need userId though. It's not passed here.
+            // Assumption: This is called after global fetch usually? 
+            // Actually, we can't easily access global cache without userId.
+            // But usually getNotes(userId) is called initially.
+            // If getNotesByFolder fails, we might just fail. 
+            // OR: Dashboard handles the "All Notes" view anyway.
+            throw error;
+        }
     }
 
     async updateNote(noteId: string, data: Partial<Note>): Promise<void> {
@@ -363,14 +410,32 @@ class SupabaseService {
     }
 
     async getRecordings(userId: string): Promise<Recording[]> {
-        const { data, error } = await supabase
-            .from('recordings')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
+        const cacheKey = `cache_recordings_${userId}`;
+        try {
+            const { data, error } = await supabase
+                .from('recordings')
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        return (data || []).map(toRecording);
+            if (error) throw error;
+
+            const recordings = (data || []).map(toRecording);
+            localStorage.setItem(cacheKey, JSON.stringify(recordings));
+            return recordings;
+        } catch (error) {
+            console.warn('Offline Mode: Loading recordings from cache', error);
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                return parsed.map((r: any) => ({
+                    ...r,
+                    createdAt: r.createdAt ? new Date(r.createdAt) : undefined
+                }));
+            }
+            if (cached === null) throw error;
+            return [];
+        }
     }
 
     subscribeRecordings(userId: string, onData: (recordings: Recording[]) => void): () => void {

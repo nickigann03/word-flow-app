@@ -67,14 +67,30 @@ using (auth.uid() = user_id);
 
 ## 4. Key Services (`/src/services`)
 
-- `supabaseService.ts`: CRUD wrapper for database and storage. Handles "optimistic" UI updates by returning IDs immediately.
+- `supabaseService.ts`: CRUD wrapper for database and storage. Includes **local caching fallback** for offline mode.
 - `groqService.ts`: Interface for LLM chat and text generation.
 - `audioRecorderService.ts`: Manages microphone stream, blob creation, and chunked transcription logic.
-- `bibleService.ts`: Fetches Bible text (currently mocks or uses external API if configured).
+- `bibleService.ts`: Fetches Bible text and provides AI-powered word definitions.
 
 ---
 
-## 5. Deployment Pipeline
+## 5. Offline Mode & Resilience
+
+### Authentication Caching
+- On successful login, the user session is cached to `localStorage`.
+- If the Supabase Auth service is unavailable on next load, the app uses the cached session to grant access.
+
+### Data Caching
+- `getNotes`, `getFolders`, `getRecordings` methods cache their results to `localStorage` on every successful fetch.
+- On network failure, the app falls back to the local cache, ensuring users can view their notes even offline.
+
+### Guest/Demo Mode
+- `loginAsGuest()` creates a local-only "Guest User" session.
+- Guest data is stored in `localStorage` only and is not synced to the cloud.
+
+---
+
+## 6. Deployment Pipeline
 
 1. **Commit**: Changes pushed to GitHub `main` branch.
 2. **Build**: Vercel automatically builds the Next.js app.

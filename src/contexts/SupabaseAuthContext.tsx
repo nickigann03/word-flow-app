@@ -23,6 +23,7 @@ interface AuthContextType {
     login: (email: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
     loginWithGoogle: () => Promise<void>;
+    loginAsGuest: () => void;
 }
 
 // =====================================================
@@ -112,6 +113,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
     }
 
+    function loginAsGuest() {
+        const guestUser: AuthUser = {
+            uid: 'guest-demo-user',
+            email: 'guest@wordflow.app',
+            displayName: 'Guest User',
+            photoURL: null
+        };
+        setUser(guestUser);
+        // Note: Guest data uses localStorage only, no cloud sync
+        localStorage.setItem('cached_user', JSON.stringify(guestUser));
+    }
+
     // =====================================================
     // SESSION LISTENER
     // =====================================================
@@ -119,29 +132,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         // Get initial session
         const getInitialSession = async () => {
+            // 1. Optimistic Load from Local Cache
+            const cachedJson = typeof window !== 'undefined' ? localStorage.getItem('cached_user') : null;
+            let hasCache = false;
+
+            if (cachedJson) {
+                try {
+                    const cachedUser = JSON.parse(cachedJson);
+                    setUser(cachedUser);
+                    hasCache = true;
+                } catch (e) {
+                    localStorage.removeItem('cached_user');
+                }
+            }
+
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User (No Session)");
-                    setUser({
-                        uid: 'mock-user-123',
-                        email: 'demo@wordflow.app',
-                        displayName: 'Demo User (Offline Mode)',
-                        photoURL: null
-                    });
+                // 2. Network Verify
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) throw error; // Will be caught below if network fails
+
+                if (session?.user) {
+                    const authUser = toAuthUser(session.user);
+                    setUser(authUser);
+                    localStorage.setItem('cached_user', JSON.stringify(authUser));
                 } else {
-                    setUser(toAuthUser(session?.user ?? null));
+                    // Valid response but no session -> User is actually logged out
+                    setUser(null);
+                    localStorage.removeItem('cached_user');
                 }
             } catch (error) {
-                console.error('Error getting session:', error);
-                // Fallback to mock user on error
-                console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User (Initial Load Error)");
-                setUser({
-                    uid: 'mock-user-123',
-                    email: 'demo@wordflow.app',
-                    displayName: 'Demo User (Offline Mode)',
-                    photoURL: null
-                });
+                console.warn('Supabase connection failed, falling back to offline cache:', error);
+                // If we failed to connect (e.g. outage), we rely on the cache we loaded at step 1.
+                // If no cache, we force logout.
+                if (!hasCache) setUser(null);
             } finally {
                 setLoading(false);
             }
@@ -154,19 +178,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             async (event, session) => {
                 console.log('Auth state changed:', event);
 
-                // MOCK USER FOR SUPABASE OUTAGE
-                // If Supabase auth fails (gives null session), we inject a development user
-                // so the app is usable offline/during outage.
-                if (!session?.user) {
-                    console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User");
-                    setUser({
-                        uid: 'mock-user-123',
-                        email: 'demo@wordflow.app',
-                        displayName: 'Demo User (Offline Mode)',
-                        photoURL: null
-                    });
-                } else {
-                    setUser(toAuthUser(session?.user ?? null));
+                if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                    localStorage.removeItem('cached_user');
+                } else if (session?.user) {
+                    const authUser = toAuthUser(session.user);
+                    setUser(authUser);
+                    localStorage.setItem('cached_user', JSON.stringify(authUser));
+                } else if (!session && event !== 'INITIAL_SESSION') {
+                    // Only clear if explicitly missing session and not just initializing
+                    // Actually, rely on SIGNED_OUT event for clearing usually
                 }
 
                 setLoading(false);
@@ -208,6 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         loginWithGoogle,
+        loginAsGuest,
     };
 
     return (
