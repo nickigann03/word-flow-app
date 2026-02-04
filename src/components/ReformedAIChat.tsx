@@ -295,8 +295,8 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                 {messages.length === 0 && showQuickQuestions && (
-                    <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-amber-500/20 flex items-center justify-center mb-4 mt-6">
+                    <div className="flex flex-col items-center text-center px-4 pt-8">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-amber-500/20 flex items-center justify-center mb-4">
                             <BookOpen className="w-8 h-8 text-amber-400" />
                         </div>
                         <h3 className="text-lg font-bold mb-2">Reformed AI Assistant</h3>
