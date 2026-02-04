@@ -113,38 +113,7 @@ export const templates: Template[] = [
         id: 'expository',
         name: 'Expository Study',
         description: 'Verse-by-verse analysis and study.',
-        content: `<h1>Expository Study</h1>
-
-<p><strong>📅 Date:</strong> ${getTodayFormatted()}</p>
-<p><strong>📖 Text:</strong> [Book Chapter:Verses]</p>
-
-<hr>
-
-<h2>Verse 1</h2>
-<ul>
-<li><strong>Observation:</strong> What does it say?</li>
-<li><strong>Interpretation:</strong> What does it mean?</li>
-</ul>
-
-<h2>Verse 2</h2>
-<ul>
-<li><strong>Observation:</strong> What does it say?</li>
-<li><strong>Interpretation:</strong> What does it mean?</li>
-</ul>
-
-<h2>Verse 3</h2>
-<ul>
-<li><strong>Observation:</strong> What does it say?</li>
-<li><strong>Interpretation:</strong> What does it mean?</li>
-</ul>
-
-<hr>
-
-<h2>💡 Application</h2>
-<p><em>How should I respond?</em></p>
-
-<p></p>
-`
+        content: `<p></p>`
     },
     {
         id: 'bible-study',

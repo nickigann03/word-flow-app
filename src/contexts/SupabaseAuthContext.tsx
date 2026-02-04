@@ -121,9 +121,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const getInitialSession = async () => {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
-                setUser(toAuthUser(session?.user ?? null));
+                if (!session) {
+                    console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User (No Session)");
+                    setUser({
+                        uid: 'mock-user-123',
+                        email: 'demo@wordflow.app',
+                        displayName: 'Demo User (Offline Mode)',
+                        photoURL: null
+                    });
+                } else {
+                    setUser(toAuthUser(session?.user ?? null));
+                }
             } catch (error) {
                 console.error('Error getting session:', error);
+                // Fallback to mock user on error
+                console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User (Initial Load Error)");
+                setUser({
+                    uid: 'mock-user-123',
+                    email: 'demo@wordflow.app',
+                    displayName: 'Demo User (Offline Mode)',
+                    photoURL: null
+                });
             } finally {
                 setLoading(false);
             }
@@ -135,7 +153,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('Auth state changed:', event);
-                setUser(toAuthUser(session?.user ?? null));
+
+                // MOCK USER FOR SUPABASE OUTAGE
+                // If Supabase auth fails (gives null session), we inject a development user
+                // so the app is usable offline/during outage.
+                if (!session?.user) {
+                    console.warn("⚠️ SUPABASE OUTAGE MODE: Using Mock User");
+                    setUser({
+                        uid: 'mock-user-123',
+                        email: 'demo@wordflow.app',
+                        displayName: 'Demo User (Offline Mode)',
+                        photoURL: null
+                    });
+                } else {
+                    setUser(toAuthUser(session?.user ?? null));
+                }
+
                 setLoading(false);
 
                 // Create/update profile on sign in

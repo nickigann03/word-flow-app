@@ -13,6 +13,8 @@ import { getAllTemplates } from '@/data/sermonTemplates';
 import { useToast } from './Toast';
 import { Modal } from './Modal';
 
+import { BiblePassageSelector } from './BiblePassageSelector';
+import bibleService, { BibleBook, BibleVersionId } from '@/services/bibleService';
 export function Dashboard() {
     const { user } = useAuth();
     const toast = useToast();
@@ -39,6 +41,7 @@ export function Dashboard() {
 
     // Modal states
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+    const [isManuscriptSelectorOpen, setIsManuscriptSelectorOpen] = useState(false);
     const [createFolderName, setCreateFolderName] = useState('');
     const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
 
@@ -182,6 +185,97 @@ export function Dashboard() {
     const handleToggleBible = () => setIsBibleOpen(prev => !prev);
     const handleToggleAIChat = () => setIsAIChatOpen(prev => !prev);
 
+    // Manuscript Creation Logic
+    const handleCreateManuscriptNote = async (selection: { book: BibleBook, chapter: number, endChapter: number, version: BibleVersionId }) => {
+        const rangeText = selection.chapter === selection.endChapter
+            ? `${selection.chapter}`
+            : `${selection.chapter}-${selection.endChapter}`;
+
+        const loadingToast = toast.loading('Creating Manuscript', `Fetching ${selection.book.name} ${rangeText}...`);
+
+        try {
+            let fullText = '';
+            let combinedVersesText = '';
+
+            // Loop through all chapters in range
+            for (let ch = selection.chapter; ch <= selection.endChapter; ch++) {
+                // Update toast for progress if multiple chapters
+                if (selection.endChapter > selection.chapter) {
+                    toast.updateToast(loadingToast, { message: `Fetching ${selection.book.name} ${ch} of ${selection.endChapter}...` });
+                }
+
+                const data = await bibleService.getChapter(selection.book.name, ch, selection.version);
+
+                if (data.verses && data.verses.length > 0) {
+                    combinedVersesText += data.verses.map(v => v.text).join(' ') + ' ';
+                } else if (data.text) {
+                    combinedVersesText += data.text + ' ';
+                }
+            }
+
+            let formattedContent = `<p></p>`; // Initial empty line
+
+            if (combinedVersesText) {
+                // Process verses to create "Manuscript" feel
+                // Smart splitting: Split by periods, exclamation marks, question marks, and semicolons
+                const segments = combinedVersesText.match(/[^.?!;]+[.?!;]+|[^.?!;]+$/g) || [combinedVersesText];
+
+                formattedContent = segments.map(segment => {
+                    const cleanSegment = segment.trim();
+                    if (!cleanSegment) return '';
+                    // Add an empty paragraph with non-breaking space for explicit line gap
+                    return `<p class="manuscript-line">${cleanSegment}</p><p>&nbsp;</p>`;
+                }).join('');
+
+                // Add title and metadata
+                const header = `<h1>${selection.book.name} ${rangeText} (${selection.version.toUpperCase()})</h1>
+                 <p><strong>Manuscript Study</strong> • ${new Date().toLocaleDateString()}</p><hr/>`;
+
+                formattedContent = header + formattedContent + '<p></p>';
+            } else {
+                formattedContent = `<p class="manuscript-line">No text found for ${selection.book.name} ${rangeText}</p>`;
+            }
+
+            toast.removeToast(loadingToast);
+
+            // Manual Note Creation to enforce Layout Settings
+            const newId = supabaseService.getNewNoteId();
+
+            // Force Landscape and Wide Margins for Manuscript
+            localStorage.setItem(`note_layout_${newId}`, JSON.stringify({
+                orientation: 'landscape',
+                margin: 'wide'
+            }));
+
+            const newNote: Note = {
+                id: newId,
+                title: `${selection.book.name} ${rangeText}`,
+                content: formattedContent,
+                folderId: selectedFolder === 'recent' || selectedFolder === 'all' ? null : selectedFolder,
+                tags: ['manuscript'],
+                userId: user?.uid || 'anonymous',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            // Optimistic Update
+            setNotes(prev => [newNote, ...prev]);
+            setSelectedNote(newNote);
+            setView('editor');
+
+            // Background Sync
+            supabaseService.createNote(user?.uid || 'anonymous', newNote, newId).catch(error => {
+                console.error('Failed to create manuscript note:', error);
+                setNotes(prev => prev.filter(n => n.id !== newId));
+                toast.error('Sync Failed', 'Could not save note');
+            });
+
+        } catch (error) {
+            console.error('Failed to create manuscript:', error);
+            toast.updateToast(loadingToast, { title: 'Error', message: 'Could not fetch scripture.', type: 'error' });
+        }
+    };
+
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans">
             <Sidebar
@@ -221,7 +315,13 @@ export function Dashboard() {
                             {getAllTemplates().map(template => (
                                 <div
                                     key={template.id}
-                                    onClick={() => handleCreateNote(template.content)}
+                                    onClick={() => {
+                                        if (template.id === 'expository') {
+                                            setIsManuscriptSelectorOpen(true);
+                                        } else {
+                                            handleCreateNote(template.content);
+                                        }
+                                    }}
                                     className="group p-6 bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/50 hover:bg-zinc-900 cursor-pointer rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/10"
                                 >
                                     <div className="w-12 h-12 mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center group-hover:from-blue-500/30 group-hover:to-purple-500/30 transition-all">
@@ -426,6 +526,13 @@ export function Dashboard() {
                     </div>
                 </div>
             </Modal>
+
+            {/* Manuscript Selector Modal */}
+            <BiblePassageSelector
+                isOpen={isManuscriptSelectorOpen}
+                onClose={() => setIsManuscriptSelectorOpen(false)}
+                onSelect={handleCreateManuscriptNote}
+            />
         </div>
     );
 }

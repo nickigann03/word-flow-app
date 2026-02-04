@@ -37,14 +37,14 @@ export function LandingPage() {
                         v1.0 Public Beta
                     </div>
 
-                    <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.1]">
-                        Theos. <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-br from-zinc-200 to-zinc-500">Intelligent Theology.</span>
+                    <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.1]">
+                        Deep Thinking. <br />
+                        <span className="text-transparent bg-clip-text bg-gradient-to-br from-zinc-200 to-zinc-500">Faithful Preaching.</span>
                     </h1>
 
-                    <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-                        A minimalist workspace for sermon preparation.
-                        Real-time transcription and deep theological insights, distraction-free.
+                    <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed px-4">
+                        An AI-assisted workspace for sermon preparation.
+                        Transcribe thoughts, explore theology, and organize sermons with a Reformed perspective.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
@@ -64,18 +64,18 @@ export function LandingPage() {
                 <div className="max-w-5xl mx-auto mt-32 grid grid-cols-1 md:grid-cols-3 gap-8">
                     <FeatureCard
                         icon={Mic}
-                        title="Live Transcription"
-                        desc="Powered by Gladia. Captures every nuance of your speech in real-time."
+                        title="Voice-to-Text"
+                        desc="Record sermons or dictate notes with high-accuracy transcription powered by Groq Whisper."
                     />
                     <FeatureCard
                         icon={BookOpen}
-                        title="Theological Context"
-                        desc="Instant definitions and cross-references powered by Groq AI models."
+                        title="Reformed AI Partner"
+                        desc="Discuss theology with a Socratic AI guide trained on historic Reformed confessions."
                     />
                     <FeatureCard
                         icon={Layers}
-                        title="Sermon Frameworks"
-                        desc="Structured templates to organize your theological arguments."
+                        title="Smart Editor"
+                        desc="Bible verse auto-completion, rich formatting, and distraction-free writing flow."
                     />
                 </div>
             </main>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent, FloatingMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Paragraph from '@tiptap/extension-paragraph';
 import Highlight from '@tiptap/extension-highlight';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Color } from '@tiptap/extension-color';
@@ -222,6 +223,55 @@ const slashCommands: SlashCommand[] = [
         },
         category: 'Bible'
     },
+    {
+        title: 'Import Manuscript',
+        description: 'Double-spaced, line-numbered format for study',
+        icon: <BookOpen className="w-4 h-4 text-emerald-400" />,
+        command: async (editor) => {
+            const reference = prompt("Enter Bible Reference (e.g., Ezekiel 34):");
+            if (!reference) return;
+
+            // Insert loading placeholder
+            editor.chain().focus().insertContent(`<p><em>Loading Manuscript: ${reference}...</em></p>`).run();
+
+            try {
+                // Fetch verses
+                const data = await bibleService.getVerse(reference, 'esv');
+
+                if (data.verses && data.verses.length > 0) {
+                    // Generate Manuscript HTML
+                    // We create a separate paragraph for each verse to allow line numbering
+                    const manuscriptHtml = data.verses.map(v => {
+                        const cleanText = v.text.replace(/^\d+\s+/, '').trim();
+                        return `<p class="manuscript-line">${cleanText}</p>`;
+                    }).join('');
+
+                    // Get current content and replace placeholder
+                    const currentContent = editor.getHTML();
+                    const newContent = currentContent.replace(
+                        `<p><em>Loading Manuscript: ${reference}...</em></p>`,
+                        manuscriptHtml + '<p></p>'
+                    );
+
+                    editor.commands.setContent(newContent);
+
+                } else {
+                    // Fallback if no verses array (single verse or error)
+                    const content = data.text || 'No text found';
+                    editor.commands.insertContent(`<p class="manuscript-line">${content}</p>`);
+                }
+            } catch (error) {
+                console.error("Manuscript import failed", error);
+                const currentContent = editor.getHTML();
+                const newContent = currentContent.replace(
+                    `<p><em>Loading Manuscript: ${reference}...</em></p>`,
+                    `<p style="color:red">Failed to load manuscript for ${reference}. Check the reference and try again.</p>`
+                );
+                editor.commands.setContent(newContent);
+            }
+        },
+        category: 'Bible'
+    },
 ];
 
 export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, onInsertComplete }: NoteEditorProps) {
@@ -311,6 +361,10 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
     const [highlighterColor, setHighlighterColor] = useState('#ffff00');
     const [showHighlighterPicker, setShowHighlighterPicker] = useState(false);
 
+    // Link Input State
+    const [showLinkInput, setShowLinkInput] = useState(false);
+    const [linkUrl, setLinkUrl] = useState('');
+
     const editorRef = useRef<HTMLDivElement>(null);
 
     // Auto-save refs
@@ -329,6 +383,23 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             StarterKit.configure({
                 codeBlock: false, // We use CodeBlockLowlight instead
                 horizontalRule: false, // We use our own
+                paragraph: false, // We use custom Paragraph extension
+            }),
+            Paragraph.extend({
+                addAttributes() {
+                    return {
+                        class: {
+                            default: null,
+                            parseHTML: element => element.getAttribute('class'),
+                            renderHTML: attributes => {
+                                if (!attributes.class) {
+                                    return {}
+                                }
+                                return { class: attributes.class }
+                            },
+                        },
+                    }
+                }
             }),
             Highlight.configure({ multicolor: true }),
             TextStyle,
@@ -1225,10 +1296,37 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
         return acc;
     }, {} as Record<string, SlashCommand[]>);
 
+    // Load Layout Settings from LocalStorage on mount or note change
+    useEffect(() => {
+        const savedLayout = localStorage.getItem(`note_layout_${note.id}`);
+        if (savedLayout) {
+            try {
+                const parsed = JSON.parse(savedLayout);
+                if (parsed.orientation) setPageOrientation(parsed.orientation);
+                if (parsed.margin) setMarginSize(parsed.margin);
+            } catch (e) {
+                console.error("Failed to parse layout settings", e);
+            }
+        } else {
+            // Default settings if nothing saved
+            setPageOrientation('portrait');
+            setMarginSize('normal');
+        }
+    }, [note.id]);
+
+    // Save Layout Settings to LocalStorage whenever they change
+    useEffect(() => {
+        const settings = {
+            orientation: pageOrientation,
+            margin: marginSize
+        };
+        localStorage.setItem(`note_layout_${note.id}`, JSON.stringify(settings));
+    }, [pageOrientation, marginSize, note.id]);
+
     return (
         <div className="flex flex-col h-full bg-zinc-950 relative">
             {/* Main Toolbar */}
-            <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur sticky top-0 z-10 shrink-0">
+            <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur sticky top-0 z-30 shrink-0">
                 <div className="flex items-center gap-1">
                     {isSermonRecording && (
                         <span className="flex items-center gap-2 px-2 py-1 bg-red-500/10 rounded-full">
@@ -1364,11 +1462,42 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     </div>
 
                     {/* Font Size */}
+                    {/* Font Size Input */}
                     <div className="flex items-center gap-0.5 border-r border-zinc-700/50 pr-2 mr-1">
-                        <button onClick={() => editor.chain().focus().setFontSize('12px').run()} className={cn("px-1.5 py-1 text-xs hover:bg-zinc-800 rounded text-zinc-400 transition-colors", editor.isActive('textStyle', { fontSize: '12px' }) && "text-white bg-zinc-800")} title="Small">S</button>
-                        <button onClick={() => editor.chain().focus().unsetFontSize().run()} className={cn("px-1.5 py-1 text-sm hover:bg-zinc-800 rounded text-zinc-300 transition-colors", !editor.isActive('textStyle', { fontSize: '12px' }) && !editor.isActive('textStyle', { fontSize: '20px' }) && !editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")} title="Medium">M</button>
-                        <button onClick={() => editor.chain().focus().setFontSize('20px').run()} className={cn("px-1.5 py-1 text-lg hover:bg-zinc-800 rounded text-zinc-200 transition-colors", editor.isActive('textStyle', { fontSize: '20px' }) && "text-white bg-zinc-800")} title="Large">L</button>
-                        <button onClick={() => editor.chain().focus().setFontSize('28px').run()} className={cn("px-1.5 py-1 text-xl hover:bg-zinc-800 rounded text-zinc-100 transition-colors", editor.isActive('textStyle', { fontSize: '28px' }) && "text-white bg-zinc-800")} title="Extra Large">XL</button>
+                        <div className="flex items-center bg-zinc-800/50 rounded overflow-hidden border border-zinc-700/50 transition-colors hover:border-zinc-600">
+                            <button
+                                onClick={() => {
+                                    const current = parseInt(editor.getAttributes('textStyle').fontSize || '12');
+                                    editor.chain().focus().setFontSize(`${Math.max(1, current - 1)}px`).run();
+                                }}
+                                className="px-1.5 py-1 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors border-r border-zinc-700/50"
+                                title="Decrease Font Size"
+                            >
+                                <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                                type="number"
+                                min="1"
+                                max="200"
+                                value={parseInt(editor.getAttributes('textStyle').fontSize || '12')}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (val > 0) editor.chain().focus().setFontSize(`${val}px`).run();
+                                }}
+                                className="w-8 bg-transparent text-center text-xs text-zinc-200 focus:outline-none py-1 appearance-none"
+                                title="Font Size"
+                            />
+                            <button
+                                onClick={() => {
+                                    const current = parseInt(editor.getAttributes('textStyle').fontSize || '12');
+                                    editor.chain().focus().setFontSize(`${current + 1}px`).run();
+                                }}
+                                className="px-1.5 py-1 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors border-l border-zinc-700/50"
+                                title="Increase Font Size"
+                            >
+                                <Plus className="w-3 h-3" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Alignment */}
@@ -1480,25 +1609,75 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     <div className="h-4 w-px bg-zinc-800 mx-1" />
 
                     {/* Link Button */}
-                    <button
-                        onClick={() => {
-                            const previousUrl = editor.getAttributes('link').href;
-                            const url = window.prompt('URL', previousUrl);
-                            if (url === null) return;
-                            if (url === '') {
-                                editor.chain().focus().extendMarkRange('link').unsetLink().run();
-                                return;
-                            }
-                            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-                        }}
-                        className={cn(
-                            "p-1.5 hover:bg-zinc-800 rounded transition-colors",
-                            editor.isActive('link') && "text-blue-400 bg-blue-500/10"
+                    {/* Link Button with Popover */}
+                    <div className="relative">
+                        <button
+                            onClick={() => {
+                                if (showLinkInput) {
+                                    setShowLinkInput(false);
+                                } else {
+                                    const previousUrl = editor.getAttributes('link').href;
+                                    setLinkUrl(previousUrl || '');
+                                    setShowLinkInput(true);
+                                }
+                            }}
+                            className={cn(
+                                "p-1.5 hover:bg-zinc-800 rounded transition-colors",
+                                editor.isActive('link') && "text-blue-400 bg-blue-500/10"
+                            )}
+                            title="Add Link"
+                        >
+                            <LinkIcon className="w-4 h-4" />
+                        </button>
+                        {showLinkInput && (
+                            <>
+                                <div className="fixed inset-0 z-[9998]" onClick={() => setShowLinkInput(false)} />
+                                <div className="absolute top-full right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 z-[9999] w-64 animate-in fade-in zoom-in-95">
+                                    <div className="text-xs text-zinc-500 font-medium mb-2">Edit Link</div>
+                                    <input
+                                        type="url"
+                                        value={linkUrl}
+                                        onChange={(e) => setLinkUrl(e.target.value)}
+                                        placeholder="https://example.com"
+                                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 mb-2"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                if (linkUrl === '') {
+                                                    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                                                } else {
+                                                    editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run();
+                                                }
+                                                setShowLinkInput(false);
+                                            }
+                                        }}
+                                    />
+                                    <div className="flex justify-between gap-2">
+                                        <button
+                                            onClick={() => {
+                                                editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                                                setShowLinkInput(false);
+                                            }}
+                                            className="px-2 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded"
+                                        >
+                                            Unlink
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (linkUrl) {
+                                                    editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run();
+                                                }
+                                                setShowLinkInput(false);
+                                            }}
+                                            className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded"
+                                        >
+                                            Save
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
                         )}
-                        title="Add Link"
-                    >
-                        <LinkIcon className="w-4 h-4" />
-                    </button>
+                    </div>
                 </div>
             )}
 
@@ -1665,11 +1844,16 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
 
                 <div
                     className={cn(
-                        "mx-auto min-h-[90vh] bg-zinc-950",
-                        // Orientation
-                        pageOrientation === 'landscape' ? "max-w-6xl" : "max-w-3xl",
-                        // Margins
-                        marginSize === 'narrow' ? "py-6 px-4" : marginSize === 'wide' ? "py-16 px-16" : "py-12 px-8"
+                        "mx-auto min-h-[90vh] bg-zinc-950 transition-all duration-300",
+                        // Orientation & Max Width Logic
+                        pageOrientation === 'landscape'
+                            ? "max-w-none w-[95%]" // Landscape: Use 95% of screen
+                            : marginSize === 'wide'
+                                ? "max-w-5xl" // Portrait Wide: Wider container 
+                                : "max-w-3xl", // Portrait Normal/Narrow: Standard document width
+
+                        // Margins (Padding inside the editor)
+                        marginSize === 'narrow' ? "py-6 px-12" : marginSize === 'wide' ? "py-6 px-24" : "py-12 px-16"
                     )}
                     style={{
                         // Tighter line spacing for lists
