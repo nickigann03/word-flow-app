@@ -95,9 +95,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     async function logout() {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+        // Clear local state FIRST to ensure user is logged out locally
         setUser(null);
+        localStorage.removeItem('cached_user');
+
+        // Then try to sign out from Supabase (don't throw if it fails - already logged out locally)
+        try {
+            await supabase.auth.signOut();
+        } catch (error) {
+            console.warn('Supabase signOut failed (user still logged out locally):', error);
+        }
     }
 
     async function loginWithGoogle() {
