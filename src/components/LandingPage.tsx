@@ -46,6 +46,9 @@ export function LandingPage() {
                         An AI-assisted workspace for sermon preparation.
                         Transcribe thoughts, explore theology, and organize sermons with a Reformed perspective.
                     </p>
+                    <p className="text-sm text-zinc-600 italic">
+                        Word that flows from the Word of God.
+                    </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
                         <button
