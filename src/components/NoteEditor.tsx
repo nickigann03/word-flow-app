@@ -9,6 +9,7 @@ import TextStyle from '@tiptap/extension-text-style';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
@@ -34,7 +35,7 @@ import {
     Table as TableIcon, CheckSquare, Code, Minus, Type,
     Info, AlertTriangle, CheckCircle, XCircle,
     RowsIcon, ColumnsIcon, Trash2, Plus, Indent as IndentIcon,
-    Subscript as SubIcon, Superscript as SupIcon, Pilcrow
+    Subscript as SubIcon, Superscript as SupIcon, Pilcrow, Link as LinkIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
@@ -337,6 +338,11 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             Indent,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             Image,
+            Link.configure({
+                openOnClick: false, // Use Ctrl+Click to open
+                autolink: true,
+                defaultProtocol: 'https',
+            }),
             // Table extensions
             Table.configure({
                 resizable: true,
@@ -980,17 +986,26 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
             try {
                 const audioId = crypto.randomUUID();
                 const filename = `${audioId}.webm`;
-                audioUrl = await supabaseService.uploadAudio(note.userId, audioBlob, filename);
+
+                // CRITICAL FIX: Use current authenticated user ID for RLS compliance
+                // The note.userId might be stale or from a different session context
+                // The RLS policy explicitly checks request.auth.uid()
+                const { data: { user: currentUser } } = await supabaseService.getCurrentUser();
+                const uploaderId = currentUser?.id || note.userId; // Fallback to note.userId if auth fails (though likely auth is required)
+
+                console.log(`Attempting upload. Note Owner: ${note.userId}, Authenticated Uploader: ${uploaderId}`);
+
+                audioUrl = await supabaseService.uploadAudio(uploaderId, audioBlob, filename);
                 console.log('Audio uploaded to Supabase:', audioUrl);
             } catch (uploadError) {
-                console.warn('Supabase upload failed, downloading locally instead:', uploadError);
+                console.error('Supabase upload FULL error:', uploadError);
                 // Fallback: download locally if upload fails
                 const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
                 const filename = `sermon-${timestamp}.webm`;
                 audioRecorderService.downloadRecording(audioBlob, filename);
                 toast.addToast({
                     title: 'Cloud Upload Failed',
-                    message: `Downloaded locally as ${filename}`,
+                    message: `Downloaded locally as ${filename}. Check console for 403/401 errors.`,
                     type: 'warning',
                     duration: 5000
                 });
@@ -1460,6 +1475,29 @@ export function NoteEditor({ note, onSave, onExport, onDelete, pendingInsert, on
                     {/* Exegete */}
                     <button onClick={handleExegete} className="px-2 py-1 hover:bg-zinc-800 rounded flex items-center gap-1.5 text-xs font-semibold text-purple-400 bg-purple-500/10 transition-colors" title="Theological lookup on selected text">
                         <BookOpen className="w-3.5 h-3.5" /> Exegete
+                    </button>
+
+                    <div className="h-4 w-px bg-zinc-800 mx-1" />
+
+                    {/* Link Button */}
+                    <button
+                        onClick={() => {
+                            const previousUrl = editor.getAttributes('link').href;
+                            const url = window.prompt('URL', previousUrl);
+                            if (url === null) return;
+                            if (url === '') {
+                                editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                                return;
+                            }
+                            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+                        }}
+                        className={cn(
+                            "p-1.5 hover:bg-zinc-800 rounded transition-colors",
+                            editor.isActive('link') && "text-blue-400 bg-blue-500/10"
+                        )}
+                        title="Add Link"
+                    >
+                        <LinkIcon className="w-4 h-4" />
                     </button>
                 </div>
             )}

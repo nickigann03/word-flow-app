@@ -61,6 +61,17 @@ const REFORMED_SYSTEM_PROMPT = `You are a Reformed evangelical Christian AI assi
 
 Remember: Your goal is to help believers grow in their knowledge and love of God through His Word, always pointing them to Christ.`;
 
+
+const SOCRATIC_SYSTEM_PROMPT = `You are a Reformed theological mentor using the Socratic method.
+DO NOT give direct answers immediately. Instead:
+1. Ask thought-provoking, leading questions to help the user discover the truth themselves.
+2. Guide them to specific scriptures (e.g., "What does Romans 8:28 say about this?") rather than quoting the verse fully.
+3. Help them reason soundly using logic and biblical principles.
+4. If they are stuck or ask for the answer directly, you may provide it, but encourage them to think first.
+5. Maintain the same Reformed convictions (TULIP, Covenant Theology, etc.), but use them to frame your questions.
+
+Your goal is to teach them HOW to think theologically, not just WHAT to think.`;
+
 class ReformedAIService {
     private conversationHistory: ChatMessage[] = [];
 
@@ -69,7 +80,7 @@ class ReformedAIService {
      * @param userMessage The user's question
      * @param noteContext Optional - the content of the current note for context-aware responses
      */
-    async chat(userMessage: string, noteContext?: string): Promise<ChatMessage> {
+    async chat(userMessage: string, noteContext?: string, mode: 'explain' | 'socratic' = 'explain'): Promise<ChatMessage> {
         const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
         if (!apiKey) {
             throw new Error('Missing GROQ API Key');
@@ -85,7 +96,8 @@ class ReformedAIService {
         this.conversationHistory.push(userMsg);
 
         // Build system prompt with optional note context
-        let systemPrompt = REFORMED_SYSTEM_PROMPT;
+        let systemPrompt = mode === 'socratic' ? SOCRATIC_SYSTEM_PROMPT : REFORMED_SYSTEM_PROMPT;
+
         if (noteContext && noteContext.trim().length > 0) {
             systemPrompt += `\n\n**CURRENT NOTE CONTEXT:**
 The user is currently working on a note/sermon. Here is the content:

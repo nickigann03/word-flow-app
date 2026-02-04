@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         .from('profiles')
                         .select('id')
                         .eq('id', session.user.id)
-                        .single();
+                        .maybeSingle();
 
                     if (!existingProfile) {
                         await supabase.from('profiles').upsert({

@@ -35,6 +35,8 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
 
     // Quick questions
     const [showQuickQuestions, setShowQuickQuestions] = useState(true);
+    // Teaching Mode: 'explain' (Direct) or 'socratic' (Guide with questions)
+    const [teachingMode, setTeachingMode] = useState<'explain' | 'socratic'>('explain');
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -114,7 +116,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
         setMessages(prev => [...prev, tempUserMsg]);
 
         try {
-            const response = await reformedAIService.chat(userMessage, noteContext);
+            const response = await reformedAIService.chat(userMessage, noteContext, teachingMode);
             setMessages(prev => [...prev.slice(0, -1), tempUserMsg, response]);
         } catch (error) {
             console.error('Chat error:', error);
@@ -260,6 +262,34 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
                         <X className="w-4 h-4" />
                     </button>
                 </div>
+            </div>
+
+            {/* Mode Toggle */}
+            <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-center gap-2">
+                <button
+                    onClick={() => setTeachingMode('explain')}
+                    className={cn(
+                        "flex-1 py-1.5 text-xs font-medium rounded-lg transition-all",
+                        teachingMode === 'explain'
+                            ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    )}
+                    title="Direct explanations and answers"
+                >
+                    🎓 Direct Teaching
+                </button>
+                <button
+                    onClick={() => setTeachingMode('socratic')}
+                    className={cn(
+                        "flex-1 py-1.5 text-xs font-medium rounded-lg transition-all",
+                        teachingMode === 'socratic'
+                            ? "bg-amber-600 text-white shadow-lg shadow-amber-500/20"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    )}
+                    title="Guide me with leading questions"
+                >
+                    🤔 Socratic Guide
+                </button>
             </div>
 
             {/* Messages Area */}

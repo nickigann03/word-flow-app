@@ -4,6 +4,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 // =====================================================
 // TYPE DEFINITIONS
 // =====================================================
+import { User } from '@supabase/supabase-js';
 
 export interface NoteTab {
     id: string;
@@ -110,6 +111,10 @@ function toRecording(row: any): Recording {
 
 class SupabaseService {
     private channels: Map<string, RealtimeChannel> = new Map();
+
+    async getCurrentUser(): Promise<{ data: { user: User | null }, error: any }> {
+        return await supabase.auth.getUser();
+    }
 
     // =====================================================
     // FOLDERS
