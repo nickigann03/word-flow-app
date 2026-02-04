@@ -135,9 +135,9 @@ export function Sidebar({
 
                 <div>
                     {!isCollapsed && (
-                        <button
+                        <div
                             onClick={() => setIsFoldersOpen(!isFoldersOpen)}
-                            className="flex items-center justify-between w-full px-3 mb-2 group hover:bg-zinc-800/50 rounded-md py-1"
+                            className="flex items-center justify-between w-full px-3 mb-2 group hover:bg-zinc-800/50 rounded-md py-1 cursor-pointer"
                         >
                             <div className="flex items-center gap-2">
                                 <ChevronDown className={cn(
@@ -155,7 +155,7 @@ export function Sidebar({
                             >
                                 <Plus className="w-3.5 h-3.5" />
                             </button>
-                        </button>
+                        </div>
                     )}
                     {isCollapsed && (
                         <div className="flex justify-center mb-2">

@@ -114,11 +114,12 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
         setIsSearching(false);
     };
 
-    const handleWordClick = async (word: string, event: React.MouseEvent) => {
+    const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleWordLookup = async (word: string, rect: DOMRect) => {
         const cleanWord = word.replace(/[^a-zA-Z]/g, '');
         if (cleanWord.length < 3) return;
 
-        const rect = (event.target as HTMLElement).getBoundingClientRect();
         setHoveredWord({
             word: cleanWord,
             meaning: null,
@@ -127,7 +128,30 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
         });
 
         const meaning = await bibleService.getWordMeaning(cleanWord, chapterContent?.text);
-        setHoveredWord(prev => prev ? { ...prev, meaning } : null);
+        setHoveredWord(prev => {
+            // Only update if we are still hovering THIS word (simple check: if hoveredWord is not null)
+            // Ideally we check ID, but word match is ok for now
+            return prev ? { ...prev, meaning } : null
+        });
+    };
+
+    const handleWordClick = async (word: string, event: React.MouseEvent) => {
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        handleWordLookup(word, rect);
+    };
+
+    const handleWordEnter = (word: string, event: React.MouseEvent) => {
+        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+        hoverTimeoutRef.current = setTimeout(() => {
+            handleWordLookup(word, rect);
+        }, 800); // 800ms hover delay
+    };
+
+    const handleWordLeave = () => {
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     };
 
     const copyVerse = (verseNum: number, text: string) => {
@@ -441,9 +465,12 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                 ) : chapterContent?.verses ? (
                     /* Chapter Content with Verses */
                     <div className="p-6 pb-12">
-                        <h2 className="text-xl font-serif font-bold text-center mb-6 text-zinc-200">
+                        <h2 className="text-xl font-serif font-bold text-center mb-1 text-zinc-200">
                             {selectedBook.name} {selectedChapter}
                         </h2>
+                        <p className="text-center text-xs text-zinc-500 mb-6 italic">
+                            Hover or click any word for definition & original meaning
+                        </p>
                         <div
                             className="space-y-1"
                             style={{ fontSize: `${fontSize}px`, lineHeight }}
@@ -459,6 +486,8 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                                             <span
                                                 key={wi}
                                                 onClick={(e) => handleWordClick(word, e)}
+                                                onMouseEnter={(e) => handleWordEnter(word, e)}
+                                                onMouseLeave={handleWordLeave}
                                                 className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-help"
                                             >
                                                 {word}{' '}
@@ -493,12 +522,27 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                         <h2 className="text-xl font-serif font-bold text-center mb-6 text-zinc-200">
                             {chapterContent.reference}
                         </h2>
-                        <p
-                            className="text-zinc-300 leading-relaxed font-serif"
-                            style={{ fontSize: `${fontSize}px`, lineHeight }}
-                        >
-                            {chapterContent.text}
-                        </p>
+                        <div className="text-zinc-300 leading-relaxed font-serif">
+                            {chapterContent.text.split(/\n+/).map((paragraph, pIdx) => (
+                                <p
+                                    key={pIdx}
+                                    className="mb-4"
+                                    style={{ fontSize: `${fontSize}px`, lineHeight }}
+                                >
+                                    {paragraph.split(' ').map((word, wIdx) => (
+                                        <span
+                                            key={wIdx}
+                                            onClick={(e) => handleWordClick(word, e)}
+                                            onMouseEnter={(e) => handleWordEnter(word, e)}
+                                            onMouseLeave={handleWordLeave}
+                                            className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-help inline-block"
+                                        >
+                                            {word}&nbsp;
+                                        </span>
+                                    ))}
+                                </p>
+                            ))}
+                        </div>
                     </div>
                 ) : (
                     <div className="flex items-center justify-center h-full min-h-[300px]">
@@ -524,18 +568,30 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                     <div className="p-4">
                         {hoveredWord.meaning ? (
                             <>
-                                {hoveredWord.meaning.original && (
-                                    <div className="mb-2">
-                                        <span className="text-xs text-zinc-500">Original: </span>
-                                        <span className="text-sm text-zinc-300 font-mono">{hoveredWord.meaning.original}</span>
-                                        {hoveredWord.meaning.transliteration && (
-                                            <span className="text-xs text-zinc-500 ml-2">({hoveredWord.meaning.transliteration})</span>
-                                        )}
+                                {/* General Definition */}
+                                <div className="mb-3">
+                                    <div className="text-xs text-zinc-500 uppercase tracking-wider font-bold mb-1">Definition</div>
+                                    <p className="text-sm text-zinc-200 leading-relaxed font-medium">{hoveredWord.meaning.definition}</p>
+                                </div>
+
+                                {/* Theological Context (if it differs or exists) */}
+                                {(hoveredWord.meaning.original || hoveredWord.meaning.meaning) && (
+                                    <div className="pt-3 border-t border-zinc-800">
+                                        <div className="flex items-baseline gap-2 mb-1">
+                                            <span className="text-xs text-zinc-500 uppercase tracking-wider font-bold">Original</span>
+                                            {hoveredWord.meaning.original && (
+                                                <span className="text-sm text-amber-500 font-mono">{hoveredWord.meaning.original}</span>
+                                            )}
+                                            {hoveredWord.meaning.transliteration && (
+                                                <span className="text-xs text-zinc-600">({hoveredWord.meaning.transliteration})</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-zinc-400 leading-relaxed">{hoveredWord.meaning.meaning}</p>
                                     </div>
                                 )}
-                                <p className="text-sm text-zinc-300 leading-relaxed">{hoveredWord.meaning.meaning}</p>
+
                                 {hoveredWord.meaning.usage && (
-                                    <p className="text-xs text-zinc-500 mt-2 italic">{hoveredWord.meaning.usage}</p>
+                                    <p className="text-xs text-zinc-500 mt-2 italic border-t border-zinc-800 pt-2">{hoveredWord.meaning.usage}</p>
                                 )}
                             </>
                         ) : (

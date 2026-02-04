@@ -429,6 +429,7 @@ class BibleService {
      * Get Greek/Hebrew word meaning using AI
      */
     async getWordMeaning(word: string, context?: string): Promise<{
+        definition: string;
         original: string;
         transliteration: string;
         meaning: string;
@@ -438,6 +439,7 @@ class BibleService {
         if (!apiKey) {
             console.error('No Groq API key configured for word meanings');
             return {
+                definition: 'API key not configured',
                 original: word,
                 transliteration: '',
                 meaning: 'API key not configured',
@@ -458,17 +460,18 @@ class BibleService {
                     model: 'llama-3.3-70b-versatile', // Updated to currently available model
                     messages: [{
                         role: 'user',
-                        content: `As a Biblical scholar, provide the Greek or Hebrew origin and meaning of the English word "${word}"${context ? ` as used in this Bible passage: "${context.substring(0, 200)}"` : ''}.
+                        content: `Define the word "${word}"${context ? ` in the context of this Bible passage: "${context.substring(0, 200)}"` : ''}.
 
 Return a JSON object with these exact fields:
 {
-    "original": "the Greek or Hebrew word (use actual Greek/Hebrew characters if possible)",
-    "transliteration": "phonetic spelling in English letters",
-    "meaning": "clear definition in 2-3 sentences",
-    "usage": "brief note on how this word is used in Scripture"
+    "definition": "Clear, concise English definition of the word (e.g. for 'Propitiation': 'the act of appeasing a god, spirit, or person')",
+    "original": "The Greek/Hebrew word (if applicable) OR leave empty",
+    "transliteration": "phonetic spelling",
+    "meaning": "Theological significance or deeper nuance in this context",
+    "usage": "Brief note on usage"
 }
 
-Only return the JSON object, no other text.`
+Only return the JSON object.`
                     }],
                     response_format: { type: 'json_object' },
                     max_tokens: 500,
@@ -494,14 +497,16 @@ Only return the JSON object, no other text.`
             const parsed = JSON.parse(content);
 
             return {
+                definition: parsed.definition || 'No definition available',
                 original: parsed.original || word,
                 transliteration: parsed.transliteration || '',
-                meaning: parsed.meaning || 'No definition available',
+                meaning: parsed.meaning || 'No meaning available',
                 usage: parsed.usage || ''
             };
         } catch (error) {
             console.error('Word meaning error:', error);
             return {
+                definition: 'Definition unavailable',
                 original: word,
                 transliteration: '',
                 meaning: 'Definition unavailable. Please try again.',
