@@ -276,7 +276,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
                     )}
                     title="Direct explanations and answers"
                 >
-                    🎓 Direct Teaching
+                    Direct Answers
                 </button>
                 <button
                     onClick={() => setTeachingMode('socratic')}
@@ -288,7 +288,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
                     )}
                     title="Guide me with leading questions"
                 >
-                    🤔 Socratic Guide
+                    Socratic Teacher
                 </button>
             </div>
 

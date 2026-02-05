@@ -350,7 +350,7 @@ export function Dashboard() {
             />
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col h-full bg-zinc-950 relative">
+            <div className="flex-1 flex flex-col h-full bg-zinc-950 relative min-w-0">
                 {view === 'editor' && selectedNote ? (
                     <NoteEditor
                         note={selectedNote}
