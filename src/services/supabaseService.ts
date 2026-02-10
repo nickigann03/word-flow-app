@@ -281,11 +281,12 @@ class SupabaseService {
         }
     }
 
-    async getNotesByFolder(folderId: string): Promise<Note[]> {
+    async getNotesByFolder(userId: string, folderId: string): Promise<Note[]> {
         try {
             const { data, error } = await supabase
                 .from('notes')
                 .select('*')
+                .eq('user_id', userId)
                 .eq('folder_id', folderId)
                 .order('created_at', { ascending: false });
 
@@ -293,13 +294,17 @@ class SupabaseService {
             return (data || []).map(toNote);
         } catch (error) {
             console.warn('Offline Mode: Loading folder notes from global cache', error);
-            // Try to find in global notes cache
-            // We need userId though. It's not passed here.
-            // Assumption: This is called after global fetch usually? 
-            // Actually, we can't easily access global cache without userId.
-            // But usually getNotes(userId) is called initially.
-            // If getNotesByFolder fails, we might just fail. 
-            // OR: Dashboard handles the "All Notes" view anyway.
+            // Fallback: filter the global notes cache by folderId
+            const cacheKey = `cache_notes_${userId}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const allNotes: Note[] = JSON.parse(cached).map((n: any) => ({
+                    ...n,
+                    createdAt: n.createdAt ? new Date(n.createdAt) : undefined,
+                    updatedAt: n.updatedAt ? new Date(n.updatedAt) : undefined
+                }));
+                return allNotes.filter(n => n.folderId === folderId);
+            }
             throw error;
         }
     }
@@ -338,23 +343,20 @@ class SupabaseService {
             if (folderId === 'recent' || folderId === 'all' || !folderId) {
                 return this.getNotes(userId);
             } else {
-                return this.getNotesByFolder(folderId);
+                return this.getNotesByFolder(userId, folderId);
             }
         };
 
         fetchNotes().then(onData).catch(console.error);
 
         // Set up realtime subscription
+        // Always listen on user_id so we catch all changes for this user,
+        // then re-fetch with the correct folder filter applied server-side
         const channelName = `notes:${userId}:${folderId || 'all'}`;
 
         const existingChannel = this.channels.get(channelName);
         if (existingChannel) {
             supabase.removeChannel(existingChannel);
-        }
-
-        let filter = `user_id=eq.${userId}`;
-        if (folderId && folderId !== 'recent' && folderId !== 'all') {
-            filter = `folder_id=eq.${folderId}`;
         }
 
         const channel = supabase
@@ -365,7 +367,7 @@ class SupabaseService {
                     event: '*',
                     schema: 'public',
                     table: 'notes',
-                    filter,
+                    filter: `user_id=eq.${userId}`,
                 },
                 () => {
                     fetchNotes().then(onData).catch(console.error);
@@ -521,17 +523,35 @@ class SupabaseService {
     async uploadAudio(userId: string, blob: Blob, filename: string): Promise<string> {
         const filePath = `${userId}/${filename}`;
 
-        const { error: uploadError } = await supabase.storage
-            .from('recordings')
-            .upload(filePath, blob);
+        // Timeout wrapper to prevent hanging forever if Storage is unreachable
+        const uploadWithTimeout = async (timeoutMs: number = 30000): Promise<string> => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        if (uploadError) throw uploadError;
+            try {
+                const { error: uploadError } = await supabase.storage
+                    .from('recordings')
+                    .upload(filePath, blob);
 
-        const { data } = supabase.storage
-            .from('recordings')
-            .getPublicUrl(filePath);
+                clearTimeout(timeoutId);
 
-        return data.publicUrl;
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('recordings')
+                    .getPublicUrl(filePath);
+
+                return data.publicUrl;
+            } catch (error: any) {
+                clearTimeout(timeoutId);
+                if (error?.name === 'AbortError') {
+                    throw new Error('Audio upload timed out after 30 seconds. Your recording was downloaded locally instead.');
+                }
+                throw error;
+            }
+        };
+
+        return uploadWithTimeout();
     }
 }
 
