@@ -147,19 +147,21 @@ export function Dashboard() {
         const previousNotes = [...notes];
         setNotes(prevNotes => prevNotes.map(n => n.id === updated.id ? updated : n));
         setSelectedNote(updated);
-        // Note: We don't necessarily update currentNoteContent here as it might be driven by the editor's internal state, 
-        // but ensuring it syncs is good.
         setCurrentNoteContent(updated.content || '');
 
         try {
+            // CRITICAL: Save ALL fields, not just title/content
             await supabaseService.updateNote(updated.id, {
                 title: updated.title,
-                content: updated.content
+                content: updated.content,
+                tabs: updated.tabs,
+                floatingBoxes: updated.floatingBoxes,
+                pageSettings: updated.pageSettings,
+                folderId: updated.folderId,
+                tags: updated.tags,
             });
-            // Success - silent, no toast needed for auto-saves
         } catch (error) {
             console.error('Failed to save note:', error);
-            // Rollback UI
             setNotes(previousNotes);
             toast.error('Save Failed', `Your changes could not be saved: ${(error as Error).message}`);
         }

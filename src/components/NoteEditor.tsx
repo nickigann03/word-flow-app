@@ -2021,12 +2021,25 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                         onChange={(e) => {
                             const newTitle = e.target.value;
                             setTitle(newTitle);
-                            // Debounce save with new title
+                            // Debounce save with new title - include ALL fields
                             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                             saveTimeoutRef.current = setTimeout(() => {
                                 const { note, onSave } = performSaveRef.current;
                                 if (editor) {
-                                    onSave({ ...note, title: newTitle, content: editor.getHTML() });
+                                    const currentContent = editor.getHTML();
+                                    const updatedTabs = tabs.map(t => ({
+                                        ...t,
+                                        content: t.id === activeTabId ? currentContent : (tabContentsRef.current.get(t.id) || t.content)
+                                    }));
+                                    const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
+                                    onSave({
+                                        ...note,
+                                        title: newTitle,
+                                        content: currentContent,
+                                        tabs: updatedTabs,
+                                        floatingBoxes,
+                                        pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' },
+                                    });
                                 }
                             }, 1000);
                         }}
