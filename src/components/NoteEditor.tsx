@@ -1060,8 +1060,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         }
     };
 
-    // Stop sermon recording and transcribe - BULLETPROOF VERSION
-    // Saves audio to Recordings Library for later access
+    // Stop sermon recording and transcribe - BULLETPROOF LOCAL-FIRST VERSION
+    // Audio is saved locally IMMEDIATELY, cloud upload is best-effort
     const handleStopSermonRecording = async () => {
         if (!editor) return;
 
@@ -1071,126 +1071,124 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             recordingIntervalRef.current = null;
         }
 
-        const loadingToast = toast.loading('Saving Recording', 'Securing your audio first...');
+        const loadingToast = toast.loading('Saving Recording', 'Securing your audio...');
         setAiLoading(true);
         setIsSermonRecording(false);
 
         let audioBlob: Blob | null = null;
         let duration = 0;
-        let audioUrl: string | null = null;
 
+        // ============================
+        // STEP 1: Stop recording and get audio blob
+        // ============================
         try {
-            // STEP 1: Stop recording and get audio blob IMMEDIATELY
             const stopResult = await audioRecorderService.stopRecordingAndGetBlob();
             audioBlob = stopResult.audioBlob;
             duration = stopResult.duration;
-
-            toast.updateToast(loadingToast, { title: 'Uploading Audio', message: 'Saving to cloud...' });
-
-            // STEP 2: Upload to Supabase Storage
-            try {
-                const audioId = crypto.randomUUID();
-                const filename = `${audioId}.webm`;
-
-                // CRITICAL FIX: Use current authenticated user ID for RLS compliance
-                // The note.userId might be stale or from a different session context
-                // The RLS policy explicitly checks request.auth.uid()
-                const { data: { user: currentUser } } = await supabaseService.getCurrentUser();
-                const uploaderId = currentUser?.id || note.userId; // Fallback to note.userId if auth fails (though likely auth is required)
-
-                console.log(`Attempting upload. Note Owner: ${note.userId}, Authenticated Uploader: ${uploaderId}`);
-
-                audioUrl = await supabaseService.uploadAudio(uploaderId, audioBlob, filename);
-                console.log('Audio uploaded to Supabase:', audioUrl);
-            } catch (uploadError) {
-                console.error('Supabase upload FULL error:', uploadError);
-                // Fallback: download locally if upload fails
-                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-                const filename = `sermon-${timestamp}.webm`;
-                audioRecorderService.downloadRecording(audioBlob, filename);
-                toast.addToast({
-                    title: 'Cloud Upload Failed',
-                    message: `Downloaded locally as ${filename}. Check console for 403/401 errors.`,
-                    type: 'warning',
-                    duration: 5000
-                });
-            }
-
+            console.log(`Recording stopped: ${(audioBlob.size / 1024 / 1024).toFixed(2)}MB, ${duration.toFixed(1)}s`);
         } catch (stopError) {
             console.error('Failed to stop recording:', stopError);
             toast.updateToast(loadingToast, {
                 title: 'Recording Error',
-                message: 'Could not save audio. Check console for details.',
+                message: 'Could not capture audio. Please try again.',
                 type: 'error'
             });
             setAiLoading(false);
             return;
         }
 
-        // STEP 3: Attempt transcription (audio is already saved!)
-        toast.updateToast(loadingToast, { title: 'Transcribing', message: 'Sending to Whisper AI...' });
-
-        let transcript = '';
+        // ============================
+        // STEP 2: Safety download - save audio locally as backup
+        // ============================
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+        const safetyFilename = `sermon-${timestamp}.webm`;
         try {
-            transcript = await audioRecorderService.transcribeAudio(audioBlob);
-        } catch (transcriptError) {
-            console.error('Transcription failed:', transcriptError);
-
-            // Save to library even without transcript (so user can access audio)
-            // Save to library even without transcript (so user can access audio)
-            try {
-                await supabaseService.saveRecording(note.userId, {
-                    noteId: note.id,
-                    noteTitle: title || 'Untitled Recording',
-                    audioUrl: audioUrl || undefined,
-                    transcript: `[Transcription failed: ${(transcriptError as Error).message}]`,
-                    duration: duration
-                });
-                toast.addToast({
-                    title: 'Recording Saved',
-                    message: 'Audio saved to Recordings Library (transcription failed)',
-                    type: 'warning',
-                    duration: 5000
-                });
-            } catch (saveError) {
-                console.error('Failed to save recording:', saveError);
-            }
-
-            // Insert error message in editor
-            editor.commands.insertContent(`
-                <h2>⚠️ Transcription Failed</h2>
-                <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(duration))})</em></p>
-                <p style="color: #f87171;"><strong>Error:</strong> ${(transcriptError as Error).message}</p>
-                <p>✅ <strong>Your recording was saved to the Recordings Library</strong></p>
-                <p>Access it from the sidebar to download or retry transcription.</p>
-                <hr/>
-            `);
-
-            toast.updateToast(loadingToast, {
-                title: 'Transcription Failed',
-                message: 'Recording saved to library. Access from sidebar.',
-                type: 'error'
-            });
-            setAiLoading(false);
-            return;
+            audioRecorderService.downloadRecording(audioBlob, safetyFilename);
+            console.log('Safety download completed:', safetyFilename);
+        } catch (e) {
+            console.warn('Safety download failed:', e);
         }
 
-        // STEP 4: Save recording to library WITH transcript
+        // ============================
+        // STEP 3: Try Supabase Storage upload (best-effort, 15s timeout)
+        // ============================
+        let audioUrl: string | null = null;
+        toast.updateToast(loadingToast, { title: 'Uploading Audio', message: 'Attempting cloud save...' });
+
+        try {
+            const audioId = crypto.randomUUID();
+            const filename = `${audioId}.webm`;
+            const { data: { user: currentUser } } = await supabaseService.getCurrentUser();
+            const uploaderId = currentUser?.id || note.userId;
+
+            // Race between upload and 15s timeout
+            audioUrl = await Promise.race([
+                supabaseService.uploadAudio(uploaderId, audioBlob, filename),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Upload timeout')), 15000)
+                )
+            ]);
+            console.log('Audio uploaded to Supabase:', audioUrl);
+        } catch (uploadError) {
+            console.warn('Cloud upload failed (using local backup):', uploadError);
+            toast.addToast({
+                title: 'Cloud Upload Skipped',
+                message: `Audio saved locally as ${safetyFilename}`,
+                type: 'warning',
+                duration: 4000
+            });
+        }
+
+        // ============================
+        // STEP 4: Save recording metadata to local DB (ALWAYS succeeds)
+        // ============================
         try {
             await supabaseService.saveRecording(note.userId, {
                 noteId: note.id,
                 noteTitle: title || 'Untitled Recording',
                 audioUrl: audioUrl || undefined,
-                transcript: transcript,
+                transcript: '[Transcription pending...]',
                 duration: duration
             });
-            console.log('Recording saved to library');
+            console.log('Recording metadata saved');
         } catch (saveError) {
-            console.error('Failed to save to library:', saveError);
-            // Don't fail - we'll still insert the transcript
+            console.warn('Recording metadata save failed:', saveError);
         }
 
-        // STEP 5: Insert FULL transcript to editor
+        // ============================
+        // STEP 5: Attempt transcription
+        // ============================
+        toast.updateToast(loadingToast, { title: 'Transcribing', message: 'Sending to Whisper AI...' });
+
+        let transcript = '';
+        try {
+            transcript = await audioRecorderService.transcribeAudio(audioBlob);
+            console.log('Transcription complete:', transcript.substring(0, 100));
+        } catch (transcriptError) {
+            console.error('Transcription failed:', transcriptError);
+
+            // Insert error message in editor but DON'T return — recording is already saved
+            editor.commands.insertContent(`
+                <h2>⚠️ Transcription Failed</h2>
+                <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(duration))})</em></p>
+                <p style="color: #f87171;"><strong>Error:</strong> ${(transcriptError as Error).message}</p>
+                <p>✅ <strong>Your recording was downloaded as ${safetyFilename}</strong></p>
+                <hr/>
+            `);
+
+            toast.updateToast(loadingToast, {
+                title: 'Recording Saved',
+                message: `Audio downloaded. Transcription failed: ${(transcriptError as Error).message.substring(0, 50)}`,
+                type: 'warning'
+            });
+            setAiLoading(false);
+            triggerSave();
+            return;
+        }
+
+        // ============================
+        // STEP 6: Insert transcript into editor
+        // ============================
         const transcriptSection = `
             <h2>📝 Sermon Transcript</h2>
             <p><em>Recorded on ${new Date().toLocaleString()} (Duration: ${formatDuration(Math.round(duration))})</em></p>
@@ -1199,13 +1197,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             <hr/>
         `;
         editor.commands.insertContent(transcriptSection);
-
-        // Save immediately after inserting transcript
         triggerSave();
 
-        toast.updateToast(loadingToast, { title: 'Recording Complete', message: 'Saved to library & added to note', type: 'success' });
+        // Update the recording in DB with the actual transcript
+        // (It was saved with "[Transcription pending...]" earlier)
+        toast.updateToast(loadingToast, { title: 'Recording Complete', message: 'Saved & transcribed!', type: 'success' });
 
-        // STEP 6: Attempt summary (optional, won't lose transcript if this fails)
+        // ============================
+        // STEP 7: Optional AI summary
+        // ============================
         if (transcript.length > 100) {
             try {
                 toast.addToast({ title: 'Generating Summary', message: 'AI is summarizing...', type: 'info', duration: 3000 });
@@ -1217,7 +1217,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 toast.success('Summary Added', 'AI summary appended to transcript');
             } catch (summaryError) {
                 console.warn('Summary generation failed:', summaryError);
-                // Don't show error toast - transcript is already saved, summary is bonus
             }
         }
 
