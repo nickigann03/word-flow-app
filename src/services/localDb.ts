@@ -56,6 +56,14 @@ export interface LocalRecording {
     deleted: number;
 }
 
+export interface LocalAudioBlob {
+    id: string;       // Same as recording ID
+    blob: Blob;       // The actual audio data
+    mimeType: string;
+    size: number;     // bytes
+    createdAt: string;
+}
+
 // =====================================================
 // DEXIE DATABASE
 // =====================================================
@@ -64,6 +72,7 @@ class WordFlowDB extends Dexie {
     notes!: Table<LocalNote>;
     folders!: Table<LocalFolder>;
     recordings!: Table<LocalRecording>;
+    audioBlobs!: Table<LocalAudioBlob>;
 
     constructor() {
         super('wordflow-local');
@@ -71,6 +80,13 @@ class WordFlowDB extends Dexie {
             notes: 'id, userId, folderId, updatedAt, pendingSync, deleted',
             folders: 'id, userId, pendingSync, deleted',
             recordings: 'id, userId, noteId, pendingSync, deleted',
+        });
+        // v2: Add audioBlobs table for local audio storage
+        this.version(2).stores({
+            notes: 'id, userId, folderId, updatedAt, pendingSync, deleted',
+            folders: 'id, userId, pendingSync, deleted',
+            recordings: 'id, userId, noteId, pendingSync, deleted',
+            audioBlobs: 'id, createdAt',
         });
     }
 }
@@ -296,4 +312,38 @@ export async function purgeDeleted(): Promise<void> {
     await localDb.notes.where({ deleted: 1, pendingSync: 0 }).delete();
     await localDb.folders.where({ deleted: 1, pendingSync: 0 }).delete();
     await localDb.recordings.where({ deleted: 1, pendingSync: 0 }).delete();
+}
+
+// =====================================================
+// AUDIO BLOB STORAGE (local audio files in IndexedDB)
+// =====================================================
+
+/** Save an audio blob to local storage */
+export async function localSaveAudioBlob(recordingId: string, blob: Blob): Promise<void> {
+    await localDb.audioBlobs.put({
+        id: recordingId,
+        blob,
+        mimeType: blob.type || 'audio/webm',
+        size: blob.size,
+        createdAt: new Date().toISOString(),
+    });
+    console.log(`💾 Audio blob saved locally: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
+}
+
+/** Get an audio blob from local storage */
+export async function localGetAudioBlob(recordingId: string): Promise<Blob | null> {
+    const entry = await localDb.audioBlobs.get(recordingId);
+    return entry?.blob ?? null;
+}
+
+/** Delete an audio blob from local storage */
+export async function localDeleteAudioBlob(recordingId: string): Promise<void> {
+    await localDb.audioBlobs.delete(recordingId);
+}
+
+/** Get a playable URL for a locally stored audio blob */
+export async function localGetAudioUrl(recordingId: string): Promise<string | null> {
+    const blob = await localGetAudioBlob(recordingId);
+    if (!blob) return null;
+    return URL.createObjectURL(blob);
 }

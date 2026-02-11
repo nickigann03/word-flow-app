@@ -53,9 +53,9 @@ class AudioRecorderService {
 
             let options: MediaRecorderOptions = {};
             if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-                options = { mimeType: 'audio/webm;codecs=opus' };
+                options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 };
             } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-                options = { mimeType: 'audio/webm' };
+                options = { mimeType: 'audio/webm', audioBitsPerSecond: 32000 };
             }
 
             this.mediaRecorder = new MediaRecorder(this.stream, options);
