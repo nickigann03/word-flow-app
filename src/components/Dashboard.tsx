@@ -150,8 +150,9 @@ export function Dashboard() {
         setCurrentNoteContent(updated.content || '');
 
         try {
-            // CRITICAL: Save ALL fields, not just title/content
+            // CRITICAL: Save ALL fields so updateNote can create if missing from local DB
             await supabaseService.updateNote(updated.id, {
+                userId: updated.userId,
                 title: updated.title,
                 content: updated.content,
                 tabs: updated.tabs,

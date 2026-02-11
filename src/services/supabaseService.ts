@@ -280,62 +280,67 @@ class SupabaseService {
                 supabase.from('recordings').select('*').eq('user_id', userId),
             ]);
 
-            // Import notes
+            // Import notes — PROTECT pending local changes
             if (notesRes.status === 'fulfilled' && notesRes.value.data) {
-                const cloudNotes: LocalNote[] = notesRes.value.data.map((row: any) => ({
-                    id: row.id,
-                    userId: row.user_id,
-                    folderId: row.folder_id,
-                    title: row.title,
-                    content: row.content || '',
-                    tabs: row.tabs || [],
-                    floatingBoxes: row.floating_boxes || [],
-                    pageSettings: row.page_settings || { orientation: 'portrait', marginSize: 'normal' },
-                    tags: row.tags || [],
-                    createdAt: row.created_at || new Date().toISOString(),
-                    updatedAt: row.updated_at || new Date().toISOString(),
-                    pendingSync: 0,
-                    deleted: 0,
-                }));
-
-                // Only import notes that aren't pending local changes
-                for (const cloudNote of cloudNotes) {
-                    const localNote = await localGetNote(cloudNote.id);
+                for (const row of notesRes.value.data) {
+                    const localNote = await localGetNote(row.id);
+                    // Only overwrite if: no local version, OR local version is already synced
                     if (!localNote || localNote.pendingSync === 0) {
-                        await localDb.notes.put(cloudNote);
+                        await localDb.notes.put({
+                            id: row.id,
+                            userId: row.user_id,
+                            folderId: row.folder_id,
+                            title: row.title,
+                            content: row.content || '',
+                            tabs: row.tabs || [],
+                            floatingBoxes: row.floating_boxes || [],
+                            pageSettings: row.page_settings || { orientation: 'portrait', marginSize: 'normal' },
+                            tags: row.tags || [],
+                            createdAt: row.created_at || new Date().toISOString(),
+                            updatedAt: row.updated_at || new Date().toISOString(),
+                            pendingSync: 0,
+                            deleted: 0,
+                        });
                     }
-                    // If local has pending changes, keep local version (it will sync up later)
                 }
             }
 
-            // Import folders
+            // Import folders — PROTECT pending local changes
             if (foldersRes.status === 'fulfilled' && foldersRes.value.data) {
-                const cloudFolders: LocalFolder[] = foldersRes.value.data.map((row: any) => ({
-                    id: row.id,
-                    userId: row.user_id,
-                    title: row.title,
-                    createdAt: row.created_at || new Date().toISOString(),
-                    pendingSync: 0,
-                    deleted: 0,
-                }));
-                await localBulkImportFolders(cloudFolders);
+                for (const row of foldersRes.value.data) {
+                    const existing = await localDb.folders.get(row.id);
+                    if (!existing || existing.pendingSync === 0) {
+                        await localDb.folders.put({
+                            id: row.id,
+                            userId: row.user_id,
+                            title: row.title,
+                            createdAt: row.created_at || new Date().toISOString(),
+                            pendingSync: 0,
+                            deleted: 0,
+                        });
+                    }
+                }
             }
 
-            // Import recordings
+            // Import recordings — PROTECT pending local changes
             if (recordingsRes.status === 'fulfilled' && recordingsRes.value.data) {
-                const cloudRecordings: LocalRecording[] = recordingsRes.value.data.map((row: any) => ({
-                    id: row.id,
-                    userId: row.user_id,
-                    noteId: row.note_id,
-                    noteTitle: row.note_title || 'Untitled Recording',
-                    audioUrl: row.audio_url,
-                    transcript: row.transcript || '',
-                    duration: row.duration || 0,
-                    createdAt: row.created_at || new Date().toISOString(),
-                    pendingSync: 0,
-                    deleted: 0,
-                }));
-                await localBulkImportRecordings(cloudRecordings);
+                for (const row of recordingsRes.value.data) {
+                    const existing = await localDb.recordings.get(row.id);
+                    if (!existing || existing.pendingSync === 0) {
+                        await localDb.recordings.put({
+                            id: row.id,
+                            userId: row.user_id,
+                            noteId: row.note_id,
+                            noteTitle: row.note_title || 'Untitled Recording',
+                            audioUrl: row.audio_url,
+                            transcript: row.transcript || '',
+                            duration: row.duration || 0,
+                            createdAt: row.created_at || new Date().toISOString(),
+                            pendingSync: 0,
+                            deleted: 0,
+                        });
+                    }
+                }
             }
 
             console.log('☁️ Pulled latest data from Supabase into local DB');
@@ -405,10 +410,13 @@ class SupabaseService {
                     filter: `user_id=eq.${userId}`,
                 },
                 () => {
-                    // Cloud changed -> pull and refresh
+                    // Cloud changed -> pull new data but DON'T overwrite pending local changes
                     this.pullFromCloud(userId).then(() => {
                         this.getFolders(userId).then(onData).catch(console.error);
-                    }).catch(console.error);
+                    }).catch(() => {
+                        // If pull fails, still read local
+                        this.getFolders(userId).then(onData).catch(console.error);
+                    });
                 }
             )
             .subscribe();
@@ -460,12 +468,27 @@ class SupabaseService {
     async updateNote(noteId: string, data: Partial<Note>): Promise<void> {
         // Get existing note from local DB
         const existing = await localGetNote(noteId);
+
         if (!existing) {
-            console.warn(`Note ${noteId} not found locally, cannot update`);
+            // Note not in IndexedDB yet (pre-migration or not pulled yet)
+            // CREATE it in local DB with the data we have — NEVER drop a save
+            console.warn(`Note ${noteId} not in local DB — creating it now`);
+            await localSaveNote({
+                id: noteId,
+                userId: data.userId || '',
+                folderId: data.folderId ?? null,
+                title: data.title || 'Untitled Note',
+                content: data.content || '',
+                tabs: data.tabs || [],
+                floatingBoxes: data.floatingBoxes || [],
+                pageSettings: data.pageSettings || { orientation: 'portrait', marginSize: 'normal' },
+                tags: data.tags || [],
+            });
+            this.scheduleSyncToCloud();
             return;
         }
 
-        // Merge updates
+        // Merge updates into existing note
         await localSaveNote({
             ...existing,
             title: data.title !== undefined ? data.title : existing.title,
@@ -521,9 +544,13 @@ class SupabaseService {
                     filter: `user_id=eq.${userId}`,
                 },
                 () => {
+                    // Pull new data but protect local pending changes
                     this.pullFromCloud(userId).then(() => {
                         fetchNotes().then(onData).catch(console.error);
-                    }).catch(console.error);
+                    }).catch(() => {
+                        // If pull fails, still read local
+                        fetchNotes().then(onData).catch(console.error);
+                    });
                 }
             )
             .subscribe();
