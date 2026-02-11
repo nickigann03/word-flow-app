@@ -1242,18 +1242,91 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setAiLoading(false);
     };
 
+    // Export Menu State
+    const [showExportMenu, setShowExportMenu] = useState(false);
+
     const handleExportPDF = async () => {
-        if (!editorRef.current) return;
-        const html2pdf = (await import('html2pdf.js')).default;
-        const element = editorRef.current;
-        const opt = {
-            margin: 1,
-            filename: `${title || 'document'}.pdf`,
-            image: { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } as any
-        };
-        html2pdf().set(opt).from(element).save();
+        if (!editor) return;
+        setShowExportMenu(false);
+        const loadingToast = toast.loading('Exporting PDF', 'Generating your document...');
+
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+
+            // Create a clean white-background clone for PDF
+            const printContainer = document.createElement('div');
+            printContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;color:black;padding:40px 50px;font-family:Georgia,serif;font-size:14px;line-height:1.8;';
+            printContainer.innerHTML = `
+                <h1 style="font-size:28px;margin-bottom:8px;color:#111;">${title || 'Untitled'}</h1>
+                <p style="font-size:12px;color:#666;margin-bottom:24px;border-bottom:1px solid #ddd;padding-bottom:12px;">
+                    ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+                <div style="color:#222;">${editor.getHTML()}</div>
+            `;
+            document.body.appendChild(printContainer);
+
+            const opt = {
+                margin: [0.5, 0.6, 0.5, 0.6] as [number, number, number, number],
+                filename: `${title || 'document'}.pdf`,
+                image: { type: 'jpeg' as const, quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'letter', orientation: pageOrientation } as any
+            };
+
+            await html2pdf().set(opt).from(printContainer).save();
+            document.body.removeChild(printContainer);
+
+            toast.updateToast(loadingToast, { title: 'PDF Exported', message: `${title || 'document'}.pdf downloaded`, type: 'success' });
+        } catch (error) {
+            console.error('PDF export failed:', error);
+            toast.updateToast(loadingToast, { title: 'Export Failed', message: (error as Error).message, type: 'error' });
+        }
+    };
+
+    const handleExportWord = () => {
+        if (!editor) return;
+        setShowExportMenu(false);
+
+        try {
+            const htmlContent = `
+                <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+                <head><meta charset="utf-8"><title>${title || 'Untitled'}</title>
+                <style>
+                    body { font-family: 'Calibri', sans-serif; font-size: 12pt; line-height: 1.6; color: #222; margin: 1in; }
+                    h1 { font-size: 24pt; color: #111; margin-bottom: 4pt; }
+                    h2 { font-size: 18pt; color: #222; margin-top: 12pt; }
+                    h3 { font-size: 14pt; color: #333; }
+                    blockquote { border-left: 3px solid #ccc; padding-left: 12px; margin-left: 0; color: #555; font-style: italic; }
+                    table { border-collapse: collapse; width: 100%; }
+                    td, th { border: 1px solid #ccc; padding: 6px 10px; }
+                    th { background: #f0f0f0; }
+                    code { background: #f5f5f5; padding: 2px 4px; font-family: 'Courier New', monospace; }
+                    pre { background: #f5f5f5; padding: 12px; overflow-x: auto; }
+                    hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+                </style></head>
+                <body>
+                    <h1>${title || 'Untitled'}</h1>
+                    <p style="font-size:10pt;color:#888;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    <hr/>
+                    ${editor.getHTML()}
+                </body></html>
+            `;
+
+            const blob = new Blob([htmlContent], { type: 'application/msword' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title || 'document'}.doc`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast.success('Word Exported', `${title || 'document'}.doc downloaded`);
+        } catch (error) {
+            console.error('Word export failed:', error);
+            toast.error('Export Failed', (error as Error).message);
+        }
     };
 
     const openCommentDialog = () => {
@@ -1340,7 +1413,32 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
-                    <button onClick={handleExportPDF} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
+                    {/* Export Dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className={cn("p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors", showExportMenu && "bg-zinc-800 text-white")}
+                            title="Export"
+                        >
+                            <FileText className="w-4 h-4" />
+                        </button>
+                        {showExportMenu && (
+                            <div className="absolute top-full right-0 mt-2 w-40 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                                <button
+                                    onClick={handleExportPDF}
+                                    className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+                                >
+                                    📄 Export as PDF
+                                </button>
+                                <button
+                                    onClick={handleExportWord}
+                                    className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+                                >
+                                    📝 Export as Word
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button onClick={addFloatingBox} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Add Text Box"><Square className="w-4 h-4" /></button>
 
                     {/* Page Settings */}

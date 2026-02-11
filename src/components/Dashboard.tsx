@@ -7,7 +7,7 @@ import { ReformedAIChat } from './ReformedAIChat';
 import RecordingsLibrary from './RecordingsLibrary';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import supabaseService, { Folder, Note } from '@/services/supabaseService';
-import { Plus, FileText, LayoutTemplate, Trash2 } from 'lucide-react';
+import { Plus, FileText, LayoutTemplate, Trash2, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BASE_TEMPLATES } from '@/data/sermonTemplates';
 import type { Template } from '@/data/sermonTemplates';
@@ -24,6 +24,7 @@ export function Dashboard() {
     const [selectedFolder, setSelectedFolder] = useState('recent');
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
     const [view, setView] = useState<'list' | 'editor' | 'templates'>('list');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Update current note content when note changes
     useEffect(() => {
@@ -391,7 +392,7 @@ export function Dashboard() {
                 ) : (
                     /* List View */
                     <div className="p-8 h-full overflow-y-auto">
-                        <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center justify-between mb-6">
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight text-white mb-1">
                                     {selectedFolder === 'recent' ? 'Recent Notes' : folders.find(f => f.id === selectedFolder)?.title || 'Notes'}
@@ -406,43 +407,74 @@ export function Dashboard() {
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {notes.map(note => (
-                                <div
-                                    key={note.id}
-                                    className="group relative p-5 bg-zinc-900/50 border border-zinc-800/50 rounded-2xl hover:bg-zinc-900 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-900/10 cursor-pointer transition-all duration-300"
-                                >
-                                    {/* Delete button - appears on hover */}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (note.id) handleDeleteNote(note.id);
-                                        }}
-                                        className="absolute top-3 right-3 p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all z-10"
-                                        title="Delete Note"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                        {/* Search Bar */}
+                        <div className="relative mb-5">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                            <input
+                                type="text"
+                                placeholder="Search notes..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/80 border border-zinc-800/50 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                            />
+                        </div>
 
-                                    <div onClick={() => { setSelectedNote(note); setView('editor'); }}>
-                                        <h3 className="font-bold text-lg mb-2 text-zinc-100 group-hover:text-blue-400 transition-colors pr-8">{note.title || 'Untitled'}</h3>
-                                        <p className="text-sm text-zinc-500 line-clamp-3">
-                                            {note.content?.replace(/[#*`<>]/g, '').substring(0, 150) || 'No content...'}
-                                        </p>
-                                        <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between text-xs text-zinc-600">
-                                            <span>{new Date().toLocaleDateString()}</span>
-                                            <FileText className="w-3 h-3 group-hover:text-blue-500" />
+                        {/* Compact Note List */}
+                        <div className="space-y-1.5">
+                            {notes
+                                .filter(note => {
+                                    if (!searchQuery.trim()) return true;
+                                    const q = searchQuery.toLowerCase();
+                                    return (
+                                        (note.title || '').toLowerCase().includes(q) ||
+                                        (note.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q)
+                                    );
+                                })
+                                .map(note => (
+                                    <div
+                                        key={note.id}
+                                        onClick={() => { setSelectedNote(note); setView('editor'); }}
+                                        className="group relative flex items-center justify-between px-4 py-3 bg-zinc-900/40 border border-zinc-800/30 rounded-xl hover:bg-zinc-900 hover:border-blue-500/40 cursor-pointer transition-all duration-200"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                            <FileText className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 shrink-0 transition-colors" />
+                                            <span className="font-medium text-sm text-zinc-200 group-hover:text-blue-400 truncate transition-colors">
+                                                {note.title || 'Untitled'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-3 shrink-0 ml-4">
+                                            <span className="text-xs text-zinc-600">
+                                                {note.createdAt ? new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                                            </span>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (note.id) handleDeleteNote(note.id);
+                                                }}
+                                                className="p-1 bg-zinc-800/60 hover:bg-red-500/20 text-zinc-600 hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
+                                                title="Delete Note"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
                             {notes.length === 0 && (
-                                <div className="col-span-full flex flex-col items-center justify-center py-20 text-zinc-600 min-h-[400px] border border-dashed border-zinc-800 rounded-2xl">
+                                <div className="flex flex-col items-center justify-center py-20 text-zinc-600 min-h-[300px] border border-dashed border-zinc-800 rounded-2xl">
                                     <FileText className="w-12 h-12 mb-4 opacity-20" />
                                     <p>No notes in this folder</p>
                                     <button onClick={() => setView('templates')} className="mt-4 text-blue-500 hover:underline">Create one</button>
                                 </div>
                             )}
+                            {notes.length > 0 && searchQuery && notes.filter(n => {
+                                const q = searchQuery.toLowerCase();
+                                return (n.title || '').toLowerCase().includes(q) || (n.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q);
+                            }).length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+                                        <Search className="w-8 h-8 mb-3 opacity-20" />
+                                        <p className="text-sm">No notes matching "{searchQuery}"</p>
+                                    </div>
+                                )}
                         </div>
                     </div>
                 )}
