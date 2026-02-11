@@ -758,6 +758,39 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         onUpdateTrigger.current = triggerSave;
     }, [triggerSave]);
 
+    // SAFETY: Save immediately on page close/refresh to prevent data loss
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+            // Immediately save current state
+            if (editor) {
+                const { note: currentNote, title: currentTitle, onSave: doSave } = performSaveRef.current;
+                const currentContent = editor.getHTML();
+                const updatedTabs = tabs.map(t =>
+                    t.id === activeTabId ? { ...t, content: currentContent } : t
+                );
+                const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
+                doSave({
+                    ...currentNote,
+                    title: currentTitle,
+                    content: currentContent,
+                    tabs: updatedTabs,
+                    floatingBoxes,
+                    pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' },
+                });
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            // Also flush on component unmount (e.g., navigating back to list view)
+            handleBeforeUnload();
+        };
+    }, [editor, tabs, activeTabId, floatingBoxes]);
+
     useEffect(() => {
         if (editor && note.id !== previousNoteId) {
             // Restore tabs from the note
