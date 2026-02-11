@@ -20,10 +20,7 @@ export interface NoteTab {
     id: string;
     title: string;
     content: string;
-    pageSettings?: {
-        orientation: 'portrait' | 'landscape';
-        marginSize: 'normal' | 'narrow' | 'wide';
-    };
+    pageSettings?: PageSettings;
 }
 
 export interface FloatingBox {
@@ -39,6 +36,7 @@ export interface FloatingBox {
 export interface PageSettings {
     orientation: 'portrait' | 'landscape';
     marginSize: 'normal' | 'narrow' | 'wide';
+    theme?: 'dark' | 'light';
 }
 
 export interface Note {

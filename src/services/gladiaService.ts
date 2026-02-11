@@ -132,6 +132,84 @@ export class GladiaService {
         }
         this.isConnected = false;
     }
+
+    /**
+     * Upload and transcribe an audio file using Gladia V2 Async API
+     */
+    async transcribeFile(file: File, onProgress?: (status: string) => void): Promise<string> {
+        const apiKey = process.env.NEXT_PUBLIC_GLADIA_API_KEY;
+        if (!apiKey) throw new Error("Missing Gladia API Key");
+
+        try {
+            // 1. Upload the file
+            if (onProgress) onProgress('Uploading...');
+            const formData = new FormData();
+            formData.append('audio', file); // Gladia v2 expects 'audio' or 'video'
+
+            const uploadRes = await fetch('https://api.gladia.io/v2/upload', {
+                method: 'POST',
+                headers: { 'x-gladia-key': apiKey },
+                body: formData
+            });
+
+            if (!uploadRes.ok) {
+                const err = await uploadRes.text();
+                throw new Error(`Upload failed: ${err}`);
+            }
+
+            const uploadData = await uploadRes.json();
+            const audioUrl = uploadData.audio_url;
+
+            // 2. Start Transcription
+            if (onProgress) onProgress('Queuing transcription...');
+            const transcribeRes = await fetch('https://api.gladia.io/v2/transcription', {
+                method: 'POST',
+                headers: {
+                    'x-gladia-key': apiKey,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    audio_url: audioUrl,
+                    diarization: true,
+                    summarization: true
+                })
+            });
+
+            if (!transcribeRes.ok) {
+                const err = await transcribeRes.text();
+                throw new Error(`Transcription start failed: ${err}`);
+            }
+
+            const transcribeData = await transcribeRes.json();
+            const resultUrl = transcribeData.result_url;
+
+            // 3. Poll for results
+            if (onProgress) onProgress('Transcribing (this may take a while)...');
+
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000)); // Poll every 2s
+
+                const pollRes = await fetch(resultUrl, {
+                    headers: { 'x-gladia-key': apiKey }
+                });
+                const pollData = await pollRes.json();
+
+                if (pollData.status === 'done') {
+                    // Return full transcript or combined parts
+                    // Gladia V2 returns 'result.transcription.full_transcript' usually
+                    return pollData.result.transcription.full_transcript;
+                } else if (pollData.status === 'error') {
+                    throw new Error(`Transcription failed: ${JSON.stringify(pollData.error)}`);
+                }
+
+                // If queued or processing, continue loop
+            }
+
+        } catch (error) {
+            console.error('Gladia Async Error:', error);
+            throw error;
+        }
+    }
 }
 
 const gladiaService = new GladiaService();

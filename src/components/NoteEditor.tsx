@@ -41,8 +41,15 @@ import {
 import { cn } from '@/lib/utils';
 import groqService from '@/services/groqService';
 import bibleService from '@/services/bibleService';
+import gladiaService from '@/services/gladiaService';
 import audioRecorderService from '@/services/audioRecorderService';
-import supabaseService, { Note } from '@/services/supabaseService';
+import supabaseService, { Note, NoteTab } from '@/services/supabaseService';
+// ... (keep other imports)
+
+// ...
+
+
+import { localSaveAudioBlob } from '@/services/localDb';
 import { useToast } from './Toast';
 
 const lowlight = createLowlight(common);
@@ -296,7 +303,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
     // Transcript / Import Dialog
     const [showImportDialog, setShowImportDialog] = useState(false);
-    const [importText, setImportText] = useState('');
 
     // Toast notifications
     const toast = useToast();
@@ -310,13 +316,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     const [showTableMenu, setShowTableMenu] = useState(false);
 
     // Tabs State - for multi-page notes like Google Docs (with per-tab page settings)
-    const [tabs, setTabs] = useState<{
-        id: string;
-        title: string;
-        content: string;
-        pageSettings?: { orientation: 'portrait' | 'landscape'; marginSize: 'normal' | 'narrow' | 'wide' };
-    }[]>(
-        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '', pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal' } }]
+    const [tabs, setTabs] = useState<NoteTab[]>(
+        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '', pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal', theme: 'dark' } }]
     );
     const [activeTabId, setActiveTabId] = useState(note.tabs?.[0]?.id || 'main');
     const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -339,13 +340,21 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
     const pageOrientation = activeTab?.pageSettings?.orientation || 'portrait';
     const marginSize = activeTab?.pageSettings?.marginSize || 'normal';
+    const pageTheme = activeTab?.pageSettings?.theme || 'dark';
     const [showPageSettings, setShowPageSettings] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 
     // Update page settings for current tab
     const setPageOrientation = (orientation: 'portrait' | 'landscape') => {
         setTabs(prev => prev.map(t =>
             t.id === activeTabId
-                ? { ...t, pageSettings: { ...t.pageSettings, orientation, marginSize: t.pageSettings?.marginSize || 'normal' } }
+                ? {
+                    ...t,
+                    pageSettings: {
+                        ...(t.pageSettings || { marginSize: 'normal', theme: 'dark' }),
+                        orientation
+                    }
+                }
                 : t
         ));
     };
@@ -353,7 +362,27 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     const setMarginSize = (size: 'normal' | 'narrow' | 'wide') => {
         setTabs(prev => prev.map(t =>
             t.id === activeTabId
-                ? { ...t, pageSettings: { orientation: t.pageSettings?.orientation || 'portrait', marginSize: size } }
+                ? {
+                    ...t,
+                    pageSettings: {
+                        ...(t.pageSettings || { orientation: 'portrait', theme: 'dark' }),
+                        marginSize: size
+                    }
+                }
+                : t
+        ));
+    };
+
+    const setPageTheme = (theme: 'dark' | 'light') => {
+        setTabs(prev => prev.map(t =>
+            t.id === activeTabId
+                ? {
+                    ...t,
+                    pageSettings: {
+                        ...(t.pageSettings || { orientation: 'portrait', marginSize: 'normal' }),
+                        theme
+                    }
+                }
                 : t
         ));
     };
@@ -725,8 +754,9 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     });
 
     const triggerSave = useCallback(() => {
+        setSaveStatus('saving');
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = setTimeout(async () => {
             const { note, title, onSave } = performSaveRef.current;
             if (editor) {
                 // First, update current tab content in ref
@@ -742,14 +772,20 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 // Get current tab settings
                 const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
 
-                onSave({
-                    ...note,
-                    title,
-                    content: currentContent, // Main content is current tab
-                    tabs: updatedTabs,
-                    floatingBoxes: floatingBoxes,
-                    pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' }
-                });
+                try {
+                    await onSave({
+                        ...note,
+                        title,
+                        content: currentContent, // Main content is current tab
+                        tabs: updatedTabs,
+                        floatingBoxes: floatingBoxes,
+                        pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal', theme: 'dark' }
+                    });
+                    setSaveStatus('saved');
+                } catch (e) {
+                    console.error("Auto-save failed", e);
+                    setSaveStatus('error');
+                }
             }
         }, 1000);
     }, [editor, tabs, activeTabId, floatingBoxes, pageOrientation, marginSize]);
@@ -1110,33 +1146,16 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         }
 
         // ============================
-        // STEP 3: Try Supabase Storage upload (best-effort, 15s timeout)
+        // STEP 3: Save audio blob to IndexedDB (INSTANT - replaces slow cloud upload)
         // ============================
-        let audioUrl: string | null = null;
-        toast.updateToast(loadingToast, { title: 'Uploading Audio', message: 'Attempting cloud save...' });
+        const recordingId = crypto.randomUUID();
+        toast.updateToast(loadingToast, { title: 'Saving Audio', message: 'Storing locally...' });
 
         try {
-            const audioId = crypto.randomUUID();
-            const filename = `${audioId}.webm`;
-            const { data: { user: currentUser } } = await supabaseService.getCurrentUser();
-            const uploaderId = currentUser?.id || note.userId;
-
-            // Race between upload and 15s timeout
-            audioUrl = await Promise.race([
-                supabaseService.uploadAudio(uploaderId, audioBlob, filename),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('Upload timeout')), 15000)
-                )
-            ]);
-            console.log('Audio uploaded to Supabase:', audioUrl);
-        } catch (uploadError) {
-            console.warn('Cloud upload failed (using local backup):', uploadError);
-            toast.addToast({
-                title: 'Cloud Upload Skipped',
-                message: `Audio saved locally as ${safetyFilename}`,
-                type: 'warning',
-                duration: 4000
-            });
+            await localSaveAudioBlob(recordingId, audioBlob);
+            console.log('Audio blob saved to IndexedDB');
+        } catch (blobError) {
+            console.warn('IndexedDB blob save failed:', blobError);
         }
 
         // ============================
@@ -1146,7 +1165,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             await supabaseService.saveRecording(note.userId, {
                 noteId: note.id,
                 noteTitle: title || 'Untitled Recording',
-                audioUrl: audioUrl || undefined,
+                audioUrl: `local://${recordingId}`, // Reference to IndexedDB blob
                 transcript: '[Transcription pending...]',
                 duration: duration
             });
@@ -1256,20 +1275,51 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setAiLoading(false);
     };
 
-    const handleImportProcess = async () => {
-        if (!importText || !editor) return;
-        const loadingToast = toast.loading('Processing Import', 'Formatting and analyzing transcript...');
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleAudioUpload = async () => {
+        if (!importFile || !editor) return;
+
+        const loadingToast = toast.loading('Transcribing Audio', 'Uploading to Gladia for analysis...');
         setAiLoading(true);
         setShowImportDialog(false);
+
         try {
-            editor.commands.insertContent(`<p>${importText}</p>`);
-            const summary = await groqService.summarizeSermon(importText);
-            editor.commands.insertContent(`<blockquote><strong>Transcript Summary:</strong><br/>${summary}</blockquote><p></p>`);
-            setImportText('');
-            toast.updateToast(loadingToast, { title: 'Import Complete', message: 'Transcript imported with AI summary', type: 'success' });
+            // Use Gladia Service to transcribe
+            const transcript = await gladiaService.transcribeFile(importFile, (status) => {
+                toast.updateToast(loadingToast, { title: 'Processing', message: status });
+            });
+
+            // Insert Transcript
+            const transcriptSection = `
+                <h2>📝 Imported Audit Transcript</h2>
+                <p><em>Source: ${importFile.name} (${(importFile.size / 1024 / 1024).toFixed(2)} MB)</em></p>
+                <hr/>
+                <p>${transcript}</p>
+                <hr/>
+            `;
+            editor.commands.insertContent(transcriptSection);
+
+            // Generate Summary
+            toast.updateToast(loadingToast, { title: 'Summarizing', message: 'Generating AI summary...' });
+            const summary = await groqService.summarizeSermon(transcript);
+
+            editor.commands.insertContent(
+                `<blockquote><strong>📋 AI Summary:</strong><br/>${summary}</blockquote><p></p>`
+            );
+
+            triggerSave();
+            setImportFile(null);
+            toast.updateToast(loadingToast, { title: 'Success', message: 'Audio transcribed and summarized', type: 'success' });
+
         } catch (e) {
-            console.error(e);
-            toast.updateToast(loadingToast, { title: 'Import Failed', type: 'error' });
+            console.error('Transcription failed:', e);
+            toast.updateToast(loadingToast, {
+                title: 'Transcription Failed',
+                message: (e as Error).message,
+                type: 'error'
+            });
         }
         setAiLoading(false);
     };
@@ -1520,6 +1570,21 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                         Wide
                                     </button>
                                 </div>
+                                <div className="text-xs font-medium text-zinc-400 mb-2 mt-3">Page Theme</div>
+                                <div className="flex gap-1">
+                                    <button
+                                        onClick={() => setPageTheme('dark')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", pageTheme === 'dark' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Dark
+                                    </button>
+                                    <button
+                                        onClick={() => setPageTheme('light')}
+                                        className={cn("flex-1 py-1.5 text-xs rounded", pageTheme === 'light' ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                                    >
+                                        Light
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1544,8 +1609,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                 <LayoutTemplate className="w-5 h-5" />
                             </button>
                         )}
-                        <span className="text-xs text-zinc-600 mr-2">
-                            Auto-saved
+                        <span className={cn(
+                            "text-xs mr-2 transition-colors duration-200",
+                            saveStatus === 'saved' ? "text-zinc-500" :
+                                saveStatus === 'saving' ? "text-blue-500 font-medium" :
+                                    "text-red-500 font-medium"
+                        )}>
+                            {saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Not Saved'}
                         </span>
                     </div>
 
@@ -1999,7 +2069,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
                 <div
                     className={cn(
-                        "mx-auto min-h-[90vh] bg-zinc-950 transition-all duration-300",
+                        "mx-auto min-h-[90vh] transition-all duration-300",
+                        pageTheme === 'light' ? "bg-white text-zinc-900 shadow-xl" : "bg-zinc-950 text-zinc-100",
                         // Orientation & Max Width Logic
                         pageOrientation === 'landscape'
                             ? "max-w-none w-[95%]" // Landscape: Use 95% of screen
@@ -2042,7 +2113,10 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                 }
                             }, 1000);
                         }}
-                        className="w-full bg-transparent text-4xl font-bold text-zinc-100 placeholder:text-zinc-700 focus:outline-none mb-6 font-display"
+                        className={cn(
+                            "w-full bg-transparent text-4xl font-bold focus:outline-none mb-6 font-display",
+                            pageTheme === 'light' ? "text-zinc-900 placeholder:text-zinc-400" : "text-zinc-100 placeholder:text-zinc-700"
+                        )}
                         placeholder="Untitled Sermon"
                     />
 
@@ -2182,20 +2256,74 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             )}
 
             {/* Import Dialog */}
+            {/* Import Dialog (Audio Upload) */}
             {showImportDialog && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-                        <h3 className="text-lg font-bold mb-2">Import Transcript / Video Content</h3>
-                        <p className="text-sm text-zinc-400 mb-4">Paste transcript text or YouTube captions here. AI will summarize it and add it to your note.</p>
-                        <textarea
-                            value={importText}
-                            onChange={e => setImportText(e.target.value)}
-                            className="w-full h-40 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500"
-                            placeholder="Paste text here..."
-                        />
-                        <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={() => setShowImportDialog(false)} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
-                            <button onClick={handleImportProcess} disabled={!importText} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-50">Summarize & Import</button>
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Upload className="w-5 h-5 text-blue-500" />
+                                Upload Audio Recording
+                            </h3>
+                            <button onClick={() => setShowImportDialog(false)} className="text-zinc-500 hover:text-white transition-colors">
+                                <XCircle className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
+                            Upload a sermon recording or audio file using <strong>Gladia AI</strong>.
+                            We will transcribe it and generate an AI summary automatically.
+                        </p>
+
+                        <div
+                            className="border-2 border-dashed border-zinc-700 bg-zinc-950/50 rounded-xl p-8 flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept="audio/*,video/*"
+                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                            />
+
+                            <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Upload className="w-6 h-6 text-zinc-400 group-hover:text-blue-400" />
+                            </div>
+
+                            <div className="text-center">
+                                {importFile ? (
+                                    <div className="text-blue-400 font-medium flex items-center gap-2 bg-blue-500/10 px-3 py-1.5 rounded-full">
+                                        <FileText className="w-4 h-4" />
+                                        {importFile.name}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <p className="text-zinc-300 font-medium">Click to browse audio files</p>
+                                        <p className="text-xs text-zinc-500 mt-1">Supports MP3, WAV, M4A, MP4</p>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-8">
+                            <button
+                                onClick={() => setShowImportDialog(false)}
+                                className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAudioUpload}
+                                disabled={!importFile}
+                                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 flex items-center gap-2"
+                            >
+                                {aiLoading ? (
+                                    <><span className="animate-spin">⏳</span> Processing...</>
+                                ) : (
+                                    <>Start Transcription <ChevronRight className="w-4 h-4" /></>
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>
