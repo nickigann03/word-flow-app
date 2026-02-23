@@ -315,29 +315,27 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     // Table Menu State
     const [showTableMenu, setShowTableMenu] = useState(false);
 
-    // Tabs State - for multi-page notes like Google Docs (with per-tab page settings)
-    const [tabs, setTabs] = useState<NoteTab[]>(
-        note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '', pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal', theme: 'dark' } }]
-    );
+    // Tabs State - for multi-page notes like Google Docs (with per-tab page settings & floating boxes)
+    // Migrate legacy note-level floatingBoxes into the first tab if tabs don't already have them
+    const [tabs, setTabs] = useState<NoteTab[]>(() => {
+        const initialTabs = note.tabs || [{ id: 'main', title: 'Page 1', content: note.content || '', pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal', theme: 'dark' } }];
+        // Migrate: if note has top-level floatingBoxes but first tab doesn't, assign them to the first tab
+        if (note.floatingBoxes && note.floatingBoxes.length > 0 && initialTabs.length > 0 && !initialTabs[0].floatingBoxes?.length) {
+            initialTabs[0] = { ...initialTabs[0], floatingBoxes: note.floatingBoxes };
+        }
+        return initialTabs;
+    });
     const [activeTabId, setActiveTabId] = useState(note.tabs?.[0]?.id || 'main');
     const [editingTabId, setEditingTabId] = useState<string | null>(null);
 
-    // Floating Text Boxes State
-    const [floatingBoxes, setFloatingBoxes] = useState<{
-        id: string;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        content: string;
-        color?: string;
-    }[]>(note.floatingBoxes || []);
+    // Floating Text Boxes State - derived from active tab (per-tab floating boxes)
     const [draggingBoxId, setDraggingBoxId] = useState<string | null>(null);
     const [resizingBoxId, setResizingBoxId] = useState<string | null>(null);
     const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
 
     // Page Settings State - derived from active tab
     const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+    const floatingBoxes = activeTab?.floatingBoxes || [];
     const pageOrientation = activeTab?.pageSettings?.orientation || 'portrait';
     const marginSize = activeTab?.pageSettings?.marginSize || 'normal';
     const pageTheme = activeTab?.pageSettings?.theme || 'dark';
@@ -763,7 +761,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 const currentContent = editor.getHTML();
                 tabContentsRef.current.set(activeTabId, currentContent);
 
-                // Build updated tabs array with current content from ref
+                // Build updated tabs array with current content from ref (including per-tab floatingBoxes)
                 const updatedTabs = tabs.map(t => ({
                     ...t,
                     content: t.id === activeTabId ? currentContent : (tabContentsRef.current.get(t.id) || t.content)
@@ -771,6 +769,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
                 // Get current tab settings
                 const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
+                // Collect all floating boxes from all tabs for backward compat at note level
+                const allFloatingBoxes = updatedTabs.flatMap(t => t.floatingBoxes || []);
 
                 try {
                     await onSave({
@@ -778,7 +778,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                         title,
                         content: currentContent, // Main content is current tab
                         tabs: updatedTabs,
-                        floatingBoxes: floatingBoxes,
+                        floatingBoxes: allFloatingBoxes,
                         pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal', theme: 'dark' }
                     });
                     setSaveStatus('saved');
@@ -788,7 +788,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 }
             }
         }, 1000);
-    }, [editor, tabs, activeTabId, floatingBoxes, pageOrientation, marginSize]);
+    }, [editor, tabs, activeTabId, pageOrientation, marginSize]);
 
     useEffect(() => {
         onUpdateTrigger.current = triggerSave;
@@ -808,12 +808,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     t.id === activeTabId ? { ...t, content: currentContent } : t
                 );
                 const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
+                const allFloatingBoxes = updatedTabs.flatMap(t => t.floatingBoxes || []);
                 doSave({
                     ...currentNote,
                     title: currentTitle,
                     content: currentContent,
                     tabs: updatedTabs,
-                    floatingBoxes,
+                    floatingBoxes: allFloatingBoxes,
                     pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' },
                 });
             }
@@ -825,17 +826,22 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             // Also flush on component unmount (e.g., navigating back to list view)
             handleBeforeUnload();
         };
-    }, [editor, tabs, activeTabId, floatingBoxes]);
+    }, [editor, tabs, activeTabId]);
 
     useEffect(() => {
         if (editor && note.id !== previousNoteId) {
-            // Restore tabs from the note
+            // Restore tabs from the note (with per-tab floatingBoxes migration)
             const restoredTabs = note.tabs || [{
                 id: 'main',
                 title: 'Page 1',
                 content: note.content || '',
                 pageSettings: note.pageSettings || { orientation: 'portrait', marginSize: 'normal' }
             }];
+
+            // Migrate: if note has top-level floatingBoxes but first tab doesn't, assign them
+            if (note.floatingBoxes && note.floatingBoxes.length > 0 && restoredTabs.length > 0 && !restoredTabs[0].floatingBoxes?.length) {
+                restoredTabs[0] = { ...restoredTabs[0], floatingBoxes: note.floatingBoxes };
+            }
 
             setTabs(restoredTabs);
             setActiveTabId(restoredTabs[0]?.id || 'main');
@@ -992,7 +998,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setEditingTabId(null);
     };
 
-    // Floating Box Functions
+    // Floating Box Functions (per-tab: updates the active tab's floatingBoxes)
+    const setFloatingBoxesForActiveTab = (updater: (prev: typeof floatingBoxes) => typeof floatingBoxes) => {
+        setTabs(prev => prev.map(t =>
+            t.id === activeTabId
+                ? { ...t, floatingBoxes: updater(t.floatingBoxes || []) }
+                : t
+        ));
+    };
+
     const addFloatingBox = () => {
         const newBox = {
             id: `box-${Date.now()}`,
@@ -1003,18 +1017,18 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             content: '',
             color: '#3b82f6'  // Blue default
         };
-        setFloatingBoxes(prev => [...prev, newBox]);
+        setFloatingBoxesForActiveTab(prev => [...prev, newBox]);
         setEditingBoxId(newBox.id);
     };
 
     const updateFloatingBox = (id: string, updates: Partial<typeof floatingBoxes[0]>) => {
-        setFloatingBoxes(prev => prev.map(box =>
+        setFloatingBoxesForActiveTab(prev => prev.map(box =>
             box.id === id ? { ...box, ...updates } : box
         ));
     };
 
     const deleteFloatingBox = (id: string) => {
-        setFloatingBoxes(prev => prev.filter(box => box.id !== id));
+        setFloatingBoxesForActiveTab(prev => prev.filter(box => box.id !== id));
     };
 
     const handleBoxDragStart = (e: React.MouseEvent, boxId: string) => {
@@ -2102,12 +2116,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                         content: t.id === activeTabId ? currentContent : (tabContentsRef.current.get(t.id) || t.content)
                                     }));
                                     const currentTabSettings = tabs.find(t => t.id === activeTabId)?.pageSettings;
+                                    const allFloatingBoxes = updatedTabs.flatMap(t => t.floatingBoxes || []);
                                     onSave({
                                         ...note,
                                         title: newTitle,
                                         content: currentContent,
                                         tabs: updatedTabs,
-                                        floatingBoxes,
+                                        floatingBoxes: allFloatingBoxes,
                                         pageSettings: currentTabSettings || { orientation: 'portrait', marginSize: 'normal' },
                                     });
                                 }

@@ -13,7 +13,9 @@ import {
     MessageSquareText,
     PanelLeftClose,
     PanelLeft,
-    Mic
+    Mic,
+    FolderPlus,
+    FolderOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -24,7 +26,7 @@ interface SidebarProps {
     folders: Folder[];
     selectedFolder: string;
     onSelectFolder: (id: string) => void;
-    onCreateFolder: () => void;
+    onCreateFolder: (parentId?: string | null) => void;
     onDeleteFolder?: (id: string) => void;
     onToggleSidebar?: () => void;
     onOpenBible?: () => void;
@@ -53,6 +55,25 @@ export function Sidebar({
     const { user, logout } = useAuth();
     const [search, setSearch] = useState('');
     const [isFoldersOpen, setIsFoldersOpen] = useState(true);
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
+    const toggleFolderExpanded = (folderId: string) => {
+        setExpandedFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(folderId)) {
+                next.delete(folderId);
+            } else {
+                next.add(folderId);
+            }
+            return next;
+        });
+    };
+
+    // Build folder tree: top-level folders have no parentId
+    const getChildFolders = (parentId: string | null | undefined) =>
+        folders.filter(f => (f.parentId || null) === (parentId || null));
+
+    const rootFolders = getChildFolders(null);
 
     const NavItem = ({ icon: Icon, label, id }: { icon: any, label: string, id: string }) => (
         <button
@@ -70,6 +91,113 @@ export function Sidebar({
             {!isCollapsed && <span className="truncate">{label}</span>}
         </button>
     );
+
+    // Recursive folder tree renderer
+    const FolderTree = ({ parentId, depth = 0 }: { parentId: string | null, depth?: number }) => {
+        const children = getChildFolders(parentId);
+        if (children.length === 0) return null;
+
+        return (
+            <div className="space-y-0.5">
+                {children.map(folder => {
+                    const folderId = folder.id!;
+                    const hasChildren = getChildFolders(folderId).length > 0;
+                    const isExpanded = expandedFolders.has(folderId);
+
+                    return (
+                        <div key={folderId}>
+                            <div
+                                className="relative group"
+                                style={{ paddingLeft: isCollapsed ? 0 : depth * 16 }}
+                            >
+                                <div className="flex items-center">
+                                    {/* Expand/collapse chevron for folders with children */}
+                                    {!isCollapsed && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (hasChildren) {
+                                                    toggleFolderExpanded(folderId);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "w-5 h-5 flex items-center justify-center shrink-0 transition-colors",
+                                                hasChildren
+                                                    ? "text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                    : "text-transparent cursor-default"
+                                            )}
+                                        >
+                                            {hasChildren && (
+                                                isExpanded
+                                                    ? <ChevronDown className="w-3 h-3" />
+                                                    : <ChevronRight className="w-3 h-3" />
+                                            )}
+                                        </button>
+                                    )}
+
+                                    {/* Folder button */}
+                                    <button
+                                        onClick={() => onSelectFolder(folderId)}
+                                        className={cn(
+                                            "flex items-center flex-1 gap-2 px-2 py-2 text-sm font-medium transition-all rounded-md",
+                                            selectedFolder === folderId
+                                                ? "bg-blue-500/10 text-blue-400"
+                                                : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800",
+                                            isCollapsed && "justify-center px-2"
+                                        )}
+                                        title={isCollapsed ? folder.title : undefined}
+                                    >
+                                        <FolderIcon className={cn(
+                                            "w-4 h-4 shrink-0",
+                                            selectedFolder === folderId ? "text-blue-400" : "text-zinc-500"
+                                        )} />
+                                        {!isCollapsed && (
+                                            <span className="truncate">{folder.title}</span>
+                                        )}
+                                    </button>
+
+                                    {/* Actions: add sub-folder & delete */}
+                                    {!isCollapsed && (
+                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pr-1">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Auto-expand when creating sub-folder
+                                                    setExpandedFolders(prev => new Set(prev).add(folderId));
+                                                    onCreateFolder(folderId);
+                                                }}
+                                                className="p-1 text-zinc-600 hover:text-blue-400 transition-colors"
+                                                title="New sub-folder"
+                                            >
+                                                <FolderPlus className="w-3 h-3" />
+                                            </button>
+                                            {onDeleteFolder && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onDeleteFolder(folderId);
+                                                    }}
+                                                    className="p-1 text-zinc-600 hover:text-red-400 transition-colors"
+                                                    title="Delete Folder"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Render children if expanded */}
+                            {(isExpanded || isCollapsed) && hasChildren && (
+                                <FolderTree parentId={folderId} depth={depth + 1} />
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
 
     return (
         <div className={cn(
@@ -129,6 +257,7 @@ export function Sidebar({
                     <div className="space-y-0.5">
                         <NavItem icon={Clock} label="Recent Notes" id="recent" />
                         <NavItem icon={Book} label="All Notes" id="all" />
+                        <NavItem icon={FolderOpen} label="All Folders" id="folders" />
                     </div>
                 </div>
 
@@ -149,7 +278,7 @@ export function Sidebar({
                                 </span>
                             </div>
                             <button
-                                onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                onClick={(e) => { e.stopPropagation(); onCreateFolder(null); }}
                                 className="text-zinc-500 hover:text-white transition-colors p-0.5"
                                 title="New folder"
                             >
@@ -159,38 +288,18 @@ export function Sidebar({
                     )}
                     {isCollapsed && (
                         <div className="flex justify-center mb-2">
-                            <button onClick={onCreateFolder} className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="New folder">
+                            <button onClick={() => onCreateFolder(null)} className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="New folder">
                                 <Plus className="w-4 h-4" />
                             </button>
                         </div>
                     )}
                     {(isFoldersOpen || isCollapsed) && (
-                        <div className="space-y-0.5">
-                            {folders.map(folder => (
-                                <div key={folder.id} className="relative group">
-                                    <NavItem
-                                        icon={FolderIcon}
-                                        label={folder.title}
-                                        id={folder.id!}
-                                    />
-                                    {onDeleteFolder && !isCollapsed && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onDeleteFolder(folder.id!);
-                                            }}
-                                            className="absolute right-2 top-1.5 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            title="Delete Folder"
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
+                        <>
+                            <FolderTree parentId={null} />
                             {folders.length === 0 && !isCollapsed && (
                                 <div className="px-3 py-2 text-xs italic text-zinc-700">No folders yet</div>
                             )}
-                        </div>
+                        </>
                     )}
                 </div>
 

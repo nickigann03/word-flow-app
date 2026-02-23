@@ -38,6 +38,7 @@ export interface LocalFolder {
     id: string;
     userId: string;
     title: string;
+    parentId: string | null;
     createdAt: string;
     pendingSync: number;
     deleted: number;
@@ -87,6 +88,20 @@ class WordFlowDB extends Dexie {
             folders: 'id, userId, pendingSync, deleted',
             recordings: 'id, userId, noteId, pendingSync, deleted',
             audioBlobs: 'id, createdAt',
+        });
+        // v3: Add parentId to folders for sub-folder support
+        this.version(3).stores({
+            notes: 'id, userId, folderId, updatedAt, pendingSync, deleted',
+            folders: 'id, userId, parentId, pendingSync, deleted',
+            recordings: 'id, userId, noteId, pendingSync, deleted',
+            audioBlobs: 'id, createdAt',
+        }).upgrade(tx => {
+            // Set parentId to null for all existing folders
+            return tx.table('folders').toCollection().modify(folder => {
+                if (folder.parentId === undefined) {
+                    folder.parentId = null;
+                }
+            });
         });
     }
 }
@@ -178,12 +193,14 @@ export async function localSaveFolder(folder: {
     id: string;
     userId: string;
     title: string;
+    parentId?: string | null;
     createdAt?: Date | string;
 }): Promise<void> {
     await localDb.folders.put({
         id: folder.id,
         userId: folder.userId,
         title: folder.title,
+        parentId: folder.parentId ?? null,
         createdAt: toISOString(folder.createdAt),
         pendingSync: 1,
         deleted: 0,

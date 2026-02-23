@@ -21,6 +21,7 @@ export interface NoteTab {
     title: string;
     content: string;
     pageSettings?: PageSettings;
+    floatingBoxes?: FloatingBox[];
 }
 
 export interface FloatingBox {
@@ -57,6 +58,7 @@ export interface Folder {
     id?: string;
     userId: string;
     title: string;
+    parentId?: string | null;
     createdAt?: Date;
 }
 
@@ -96,6 +98,7 @@ function toFolder(row: any): Folder {
         id: row.id,
         userId: row.user_id,
         title: row.title,
+        parentId: row.parent_id || null,
         createdAt: row.created_at ? new Date(row.created_at) : undefined,
     };
 }
@@ -136,6 +139,7 @@ function localFolderToFolder(lf: LocalFolder): Folder {
         id: lf.id,
         userId: lf.userId,
         title: lf.title,
+        parentId: lf.parentId || null,
         createdAt: new Date(lf.createdAt),
     };
 }
@@ -196,6 +200,7 @@ class SupabaseService {
                             id: folder.id,
                             user_id: folder.userId,
                             title: folder.title,
+                            parent_id: folder.parentId || null,
                             created_at: folder.createdAt,
                         });
                     }
@@ -312,6 +317,7 @@ class SupabaseService {
                             id: row.id,
                             userId: row.user_id,
                             title: row.title,
+                            parentId: row.parent_id || null,
                             createdAt: row.created_at || new Date().toISOString(),
                             pendingSync: 0,
                             deleted: 0,
@@ -355,12 +361,13 @@ class SupabaseService {
         return crypto.randomUUID();
     }
 
-    async createFolder(userId: string, folderData: { title: string }, customId?: string): Promise<string> {
+    async createFolder(userId: string, folderData: { title: string; parentId?: string | null }, customId?: string): Promise<string> {
         const id = customId || this.getNewFolderId();
         await localSaveFolder({
             id,
             userId,
             title: folderData.title,
+            parentId: folderData.parentId || null,
         });
         this.scheduleSyncToCloud();
         return id;

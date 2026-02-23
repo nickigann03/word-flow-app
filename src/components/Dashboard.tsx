@@ -7,7 +7,7 @@ import { ReformedAIChat } from './ReformedAIChat';
 import RecordingsLibrary from './RecordingsLibrary';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import supabaseService, { Folder, Note } from '@/services/supabaseService';
-import { Plus, FileText, LayoutTemplate, Trash2, Search } from 'lucide-react';
+import { Plus, FileText, LayoutTemplate, Trash2, Search, Folder as FolderIcon, FolderOpen, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BASE_TEMPLATES } from '@/data/sermonTemplates';
 import type { Template } from '@/data/sermonTemplates';
@@ -45,6 +45,7 @@ export function Dashboard() {
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [isManuscriptSelectorOpen, setIsManuscriptSelectorOpen] = useState(false);
     const [createFolderName, setCreateFolderName] = useState('');
+    const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
     const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
     const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
     const [customTemplates, setCustomTemplates] = useState<Template[]>([]);
@@ -339,8 +340,9 @@ export function Dashboard() {
                 folders={folders}
                 selectedFolder={selectedFolder}
                 onSelectFolder={handleSelectFolder}
-                onCreateFolder={() => {
+                onCreateFolder={(parentId?: string | null) => {
                     setCreateFolderName('');
+                    setCreateFolderParentId(parentId || null);
                     setIsCreateFolderOpen(true);
                 }}
                 onDeleteFolder={(id) => setFolderToDelete(id)}
@@ -393,92 +395,257 @@ export function Dashboard() {
                         <button onClick={() => setView('list')} className="mt-8 text-zinc-500 hover:text-white transition-colors">← Back to Notes</button>
                     </div>
                 ) : (
-                    /* List View */
+                    /* List View — with sub-folder cards (Google Drive style) */
                     <div className="p-8 h-full overflow-y-auto">
+                        {/* Breadcrumb for nested folders */}
+                        {(() => {
+                            const isSpecial = selectedFolder === 'recent' || selectedFolder === 'all' || selectedFolder === 'folders';
+                            if (isSpecial) return null;
+                            // Build breadcrumb path
+                            const crumbs: Folder[] = [];
+                            let current = folders.find(f => f.id === selectedFolder);
+                            while (current) {
+                                crumbs.unshift(current);
+                                current = current.parentId ? folders.find(f => f.id === current!.parentId) : undefined;
+                            }
+                            if (crumbs.length <= 1) return null;
+                            return (
+                                <div className="flex items-center gap-1 mb-4 text-sm text-zinc-500">
+                                    <button onClick={() => handleSelectFolder('folders')} className="hover:text-white transition-colors">Folders</button>
+                                    {crumbs.map((c, i) => (
+                                        <span key={c.id} className="flex items-center gap-1">
+                                            <ChevronRight className="w-3 h-3" />
+                                            {i < crumbs.length - 1 ? (
+                                                <button onClick={() => handleSelectFolder(c.id!)} className="hover:text-white transition-colors">{c.title}</button>
+                                            ) : (
+                                                <span className="text-zinc-300 font-medium">{c.title}</span>
+                                            )}
+                                        </span>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+
                         <div className="flex items-center justify-between mb-6">
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight text-white mb-1">
-                                    {selectedFolder === 'recent' ? 'Recent Notes' : folders.find(f => f.id === selectedFolder)?.title || 'Notes'}
+                                    {selectedFolder === 'recent' ? 'Recent Notes' : selectedFolder === 'folders' ? 'All Folders' : folders.find(f => f.id === selectedFolder)?.title || 'Notes'}
                                 </h1>
-                                <p className="text-zinc-500">{notes.length} notes</p>
+                                {selectedFolder === 'folders' ? (
+                                    <p className="text-zinc-500">{folders.length} folders</p>
+                                ) : (
+                                    <p className="text-zinc-500">{notes.length} notes</p>
+                                )}
                             </div>
-                            <button
-                                onClick={() => setView('templates')}
-                                className="flex items-center gap-2 px-4 py-2 bg-white text-black font-semibold rounded-full hover:bg-zinc-200 transition-colors"
-                            >
-                                <Plus className="w-4 h-4" /> New Note
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {selectedFolder !== 'recent' && selectedFolder !== 'all' && selectedFolder !== 'folders' && (
+                                    <button
+                                        onClick={() => {
+                                            setCreateFolderName('');
+                                            setCreateFolderParentId(selectedFolder);
+                                            setIsCreateFolderOpen(true);
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-200 font-semibold rounded-full hover:bg-zinc-700 transition-colors"
+                                    >
+                                        <FolderIcon className="w-4 h-4" /> New Sub-folder
+                                    </button>
+                                )}
+                                {selectedFolder === 'folders' ? (
+                                    <button
+                                        onClick={() => {
+                                            setCreateFolderName('');
+                                            setCreateFolderParentId(null);
+                                            setIsCreateFolderOpen(true);
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-white text-black font-semibold rounded-full hover:bg-zinc-200 transition-colors"
+                                    >
+                                        <Plus className="w-4 h-4" /> New Folder
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => setView('templates')}
+                                        className="flex items-center gap-2 px-4 py-2 bg-white text-black font-semibold rounded-full hover:bg-zinc-200 transition-colors"
+                                    >
+                                        <Plus className="w-4 h-4" /> New Note
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Search Bar */}
-                        <div className="relative mb-5">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                            <input
-                                type="text"
-                                placeholder="Search notes..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/80 border border-zinc-800/50 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                            />
-                        </div>
+                        {selectedFolder !== 'folders' && (
+                            <div className="relative mb-5">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Search notes..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/80 border border-zinc-800/50 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                                />
+                            </div>
+                        )}
 
-                        {/* Compact Note List */}
-                        <div className="space-y-1.5">
-                            {notes
-                                .filter(note => {
-                                    if (!searchQuery.trim()) return true;
-                                    const q = searchQuery.toLowerCase();
-                                    return (
-                                        (note.title || '').toLowerCase().includes(q) ||
-                                        (note.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q)
-                                    );
-                                })
-                                .map(note => (
-                                    <div
-                                        key={note.id}
-                                        onClick={() => { setSelectedNote(note); setView('editor'); }}
-                                        className="group relative flex items-center justify-between px-4 py-3 bg-zinc-900/40 border border-zinc-800/30 rounded-xl hover:bg-zinc-900 hover:border-blue-500/40 cursor-pointer transition-all duration-200"
-                                    >
-                                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                                            <FileText className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 shrink-0 transition-colors" />
-                                            <span className="font-medium text-sm text-zinc-200 group-hover:text-blue-400 truncate transition-colors">
-                                                {note.title || 'Untitled'}
-                                            </span>
+                        {/* ALL FOLDERS VIEW (Google Drive style grid) */}
+                        {selectedFolder === 'folders' ? (
+                            <div>
+                                {/* Root-level folders */}
+                                {(() => {
+                                    const rootFolders = folders.filter(f => !f.parentId);
+                                    return rootFolders.length > 0 ? (
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                            {rootFolders.map(folder => {
+                                                const childCount = folders.filter(f => f.parentId === folder.id).length;
+                                                const noteCount = notes.filter(n => n.folderId === folder.id).length;
+                                                return (
+                                                    <div
+                                                        key={folder.id}
+                                                        onClick={() => handleSelectFolder(folder.id!)}
+                                                        className="group p-4 bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/40 hover:bg-zinc-900 cursor-pointer rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-900/5"
+                                                    >
+                                                        <div className="flex items-start justify-between mb-3">
+                                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-lg flex items-center justify-center group-hover:from-blue-500/30 group-hover:to-cyan-500/30 transition-all">
+                                                                <FolderOpen className="w-5 h-5 text-blue-400" />
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFolderToDelete(folder.id!);
+                                                                }}
+                                                                className="p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                                                title="Delete Folder"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <h3 className="font-semibold text-sm text-zinc-200 group-hover:text-blue-400 truncate transition-colors mb-1">{folder.title}</h3>
+                                                        <p className="text-xs text-zinc-600">
+                                                            {childCount > 0 && `${childCount} sub-folder${childCount > 1 ? 's' : ''}`}
+                                                            {childCount > 0 && noteCount > 0 && ' · '}
+                                                            {noteCount > 0 && `${noteCount} note${noteCount > 1 ? 's' : ''}`}
+                                                            {childCount === 0 && noteCount === 0 && 'Empty'}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="flex items-center gap-3 shrink-0 ml-4">
-                                            <span className="text-xs text-zinc-600">
-                                                {note.createdAt ? new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
-                                            </span>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-20 text-zinc-600 min-h-[300px] border border-dashed border-zinc-800 rounded-2xl">
+                                            <FolderOpen className="w-12 h-12 mb-4 opacity-20" />
+                                            <p>No folders yet</p>
                                             <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (note.id) handleDeleteNote(note.id);
+                                                onClick={() => {
+                                                    setCreateFolderName('');
+                                                    setCreateFolderParentId(null);
+                                                    setIsCreateFolderOpen(true);
                                                 }}
-                                                className="p-1 bg-zinc-800/60 hover:bg-red-500/20 text-zinc-600 hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
-                                                title="Delete Note"
+                                                className="mt-4 text-blue-500 hover:underline"
                                             >
-                                                <Trash2 className="w-3.5 h-3.5" />
+                                                Create one
                                             </button>
                                         </div>
-                                    </div>
-                                ))}
-                            {notes.length === 0 && (
-                                <div className="flex flex-col items-center justify-center py-20 text-zinc-600 min-h-[300px] border border-dashed border-zinc-800 rounded-2xl">
-                                    <FileText className="w-12 h-12 mb-4 opacity-20" />
-                                    <p>No notes in this folder</p>
-                                    <button onClick={() => setView('templates')} className="mt-4 text-blue-500 hover:underline">Create one</button>
-                                </div>
-                            )}
-                            {notes.length > 0 && searchQuery && notes.filter(n => {
-                                const q = searchQuery.toLowerCase();
-                                return (n.title || '').toLowerCase().includes(q) || (n.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q);
-                            }).length === 0 && (
-                                    <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
-                                        <Search className="w-8 h-8 mb-3 opacity-20" />
-                                        <p className="text-sm">No notes matching "{searchQuery}"</p>
-                                    </div>
+                                    );
+                                })()}
+                            </div>
+                        ) : (
+                            <>
+                                {/* Sub-folder cards (Google Drive style) - shown inside a specific folder */}
+                                {(() => {
+                                    if (selectedFolder === 'recent' || selectedFolder === 'all') return null;
+                                    const subFolders = folders.filter(f => f.parentId === selectedFolder);
+                                    if (subFolders.length === 0) return null;
+                                    return (
+                                        <div className="mb-6">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-600 mb-3 px-1">Folders</h3>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                                {subFolders.map(folder => {
+                                                    const childCount = folders.filter(f => f.parentId === folder.id).length;
+                                                    return (
+                                                        <div
+                                                            key={folder.id}
+                                                            onClick={() => handleSelectFolder(folder.id!)}
+                                                            className="group flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/40 hover:bg-zinc-900 cursor-pointer rounded-xl transition-all duration-200"
+                                                        >
+                                                            <div className="w-9 h-9 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-lg flex items-center justify-center shrink-0 group-hover:from-blue-500/30 group-hover:to-cyan-500/30 transition-all">
+                                                                <FolderIcon className="w-4 h-4 text-blue-400" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <span className="font-medium text-sm text-zinc-200 group-hover:text-blue-400 truncate block transition-colors">{folder.title}</span>
+                                                                {childCount > 0 && (
+                                                                    <span className="text-xs text-zinc-600">{childCount} sub-folder{childCount > 1 ? 's' : ''}</span>
+                                                                )}
+                                                            </div>
+                                                            <ChevronRight className="w-4 h-4 text-zinc-700 group-hover:text-blue-400 ml-auto shrink-0 transition-colors" />
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Notes list */}
+                                {selectedFolder !== 'recent' && selectedFolder !== 'all' && (
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-600 mb-3 px-1">Notes</h3>
                                 )}
-                        </div>
+                                <div className="space-y-1.5">
+                                    {notes
+                                        .filter(note => {
+                                            if (!searchQuery.trim()) return true;
+                                            const q = searchQuery.toLowerCase();
+                                            return (
+                                                (note.title || '').toLowerCase().includes(q) ||
+                                                (note.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q)
+                                            );
+                                        })
+                                        .map(note => (
+                                            <div
+                                                key={note.id}
+                                                onClick={() => { setSelectedNote(note); setView('editor'); }}
+                                                className="group relative flex items-center justify-between px-4 py-3 bg-zinc-900/40 border border-zinc-800/30 rounded-xl hover:bg-zinc-900 hover:border-blue-500/40 cursor-pointer transition-all duration-200"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                    <FileText className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 shrink-0 transition-colors" />
+                                                    <span className="font-medium text-sm text-zinc-200 group-hover:text-blue-400 truncate transition-colors">
+                                                        {note.title || 'Untitled'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0 ml-4">
+                                                    <span className="text-xs text-zinc-600">
+                                                        {note.createdAt ? new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (note.id) handleDeleteNote(note.id);
+                                                        }}
+                                                        className="p-1 bg-zinc-800/60 hover:bg-red-500/20 text-zinc-600 hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
+                                                        title="Delete Note"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    {notes.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center py-20 text-zinc-600 min-h-[300px] border border-dashed border-zinc-800 rounded-2xl">
+                                            <FileText className="w-12 h-12 mb-4 opacity-20" />
+                                            <p>No notes in this folder</p>
+                                            <button onClick={() => setView('templates')} className="mt-4 text-blue-500 hover:underline">Create one</button>
+                                        </div>
+                                    )}
+                                    {notes.length > 0 && searchQuery && notes.filter(n => {
+                                        const q = searchQuery.toLowerCase();
+                                        return (n.title || '').toLowerCase().includes(q) || (n.content || '').replace(/<[^>]*>/g, '').toLowerCase().includes(q);
+                                    }).length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+                                                <Search className="w-8 h-8 mb-3 opacity-20" />
+                                                <p className="text-sm">No notes matching "{searchQuery}"</p>
+                                            </div>
+                                        )}
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
@@ -519,16 +686,15 @@ export function Dashboard() {
                         if (!createFolderName.trim() || !user) return;
 
                         const newId = supabaseService.getNewFolderId();
-                        const newFolder: Folder = { id: newId, title: createFolderName, userId: user.uid, createdAt: new Date() };
-
-
+                        const newFolder: Folder = { id: newId, title: createFolderName, parentId: createFolderParentId, userId: user.uid, createdAt: new Date() };
 
                         // 1. Instant UI Update (Optimistic)
                         setFolders(prev => [newFolder, ...prev]);
                         setIsCreateFolderOpen(false);
+                        setCreateFolderParentId(null);
 
                         // 2. Background Sync
-                        supabaseService.createFolder(user.uid, { title: createFolderName }, newId)
+                        supabaseService.createFolder(user.uid, { title: createFolderName, parentId: createFolderParentId }, newId)
                             .catch(e => {
                                 console.error('Folder sync failed', e);
                                 // Rollback
