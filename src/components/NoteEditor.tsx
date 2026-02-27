@@ -1394,10 +1394,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     allTabsHTML += `</div>`;
                 }
 
-                // Add page break between tabs (except after the last one)
-                if (i < currentTabs.length - 1) {
-                    allTabsHTML += `<div style="page-break-after:always;"></div>`;
-                }
             }
 
             // Create a clean white-background clone for PDF
@@ -1480,10 +1476,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     }
                 }
 
-                // Add page break between tabs (except after the last one)
-                if (i < currentTabs.length - 1) {
-                    allTabsHTML += `<br clear="all" style="page-break-before:always;"/>`;
-                }
             }
 
             const htmlContent = `
