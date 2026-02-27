@@ -1347,7 +1347,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         const loadingToast = toast.loading('Exporting PDF', 'Generating your document...');
 
         try {
-            const html2pdf = (await import('html2pdf.js')).default;
+            const html2canvas = (await import('html2canvas')).default;
+            const { jsPDF } = await import('jspdf');
 
             // Build content from ALL tabs, including floating boxes
             let allTabsHTML = '';
@@ -1397,7 +1398,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     }
                 }
                 allTabsHTML += `</div>`;
-
             }
 
             // Create a clean white-background clone for PDF
@@ -1412,16 +1412,26 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             `;
             document.body.appendChild(printContainer);
 
-            const opt = {
-                margin: [0.5, 0.6, 0.5, 0.6] as [number, number, number, number],
-                filename: `${title || 'document'}.pdf`,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'in', format: 'letter', orientation: pageOrientation } as any
-            };
+            // Wait a moment for any dynamic things to settle
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            await html2pdf().set(opt).from(printContainer).save();
+            const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
             document.body.removeChild(printContainer);
+
+            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+
+            // Calculate perfect page sizing for a continuous document
+            const pdfWidth = canvas.width / 2;
+            const pdfHeight = canvas.height / 2;
+
+            const pdf = new jsPDF({
+                orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
+                unit: 'px',
+                format: [pdfWidth, pdfHeight]
+            });
+
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${title || 'document'}.pdf`);
 
             toast.updateToast(loadingToast, { title: 'PDF Exported', message: `${title || 'document'}.pdf downloaded`, type: 'success' });
         } catch (error) {
