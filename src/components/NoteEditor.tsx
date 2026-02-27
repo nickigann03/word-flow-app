@@ -1520,6 +1520,177 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         }
     };
 
+    const handleExportHTML = () => {
+        if (!editor) return;
+        setShowExportMenu(false);
+
+        try {
+            let allTabsHTML = '';
+            const currentTabs = tabs.map(t =>
+                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+            );
+
+            for (let i = 0; i < currentTabs.length; i++) {
+                const tab = currentTabs[i];
+
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || 'Page ' + (i + 1)}</h2>
+                        </div>
+                    `;
+                }
+
+                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+
+                const tabBoxes = tab.floatingBoxes || [];
+                if (tabBoxes.length > 0) {
+                    allTabsHTML += `<div style="margin-top:20px;">`;
+                    for (const box of tabBoxes) {
+                        const bgColor = box.color || '#3b82f6';
+                        allTabsHTML += `
+                            <div style="
+                                border: 2px solid ${bgColor};
+                                border-radius: 8px;
+                                padding: 12px 16px;
+                                margin-bottom: 12px;
+                                background-color: ${bgColor}15;
+                            ">
+                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
+                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>')}</div>
+                            </div>
+                        `;
+                    }
+                    allTabsHTML += `</div>`;
+                }
+            }
+
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="utf-8">
+                    <title>${title || 'Untitled'}</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #222; max-width: 800px; margin: 0 auto; padding: 40px; }
+                        h1 { font-size: 32px; color: #111; margin-bottom: 8px; }
+                        h2 { font-size: 24px; color: #222; margin-top: 24px; }
+                        h3 { font-size: 20px; color: #333; }
+                        blockquote { border-left: 4px solid #e5e7eb; padding-left: 16px; margin-left: 0; color: #4b5563; font-style: italic; }
+                        table { border-collapse: collapse; width: 100%; }
+                        td, th { border: 1px solid #e5e7eb; padding: 8px 12px; }
+                        th { background: #f9fafb; }
+                        code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9em; }
+                        pre { background: #f3f4f6; padding: 16px; border-radius: 8px; overflow-x: auto; }
+                        pre code { background: none; padding: 0; }
+                        hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+                        img { max-width: 100%; height: auto; border-radius: 8px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${title || 'Untitled'}</h1>
+                    <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
+                        ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </p>
+                    ${allTabsHTML}
+                </body>
+                </html>
+            `;
+
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title || 'document'}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast.success('HTML Exported', `${title || 'document'}.html downloaded`);
+        } catch (error) {
+            console.error('HTML export failed:', error);
+            toast.error('Export Failed', (error as Error).message);
+        }
+    };
+
+    const handleExportImage = async () => {
+        if (!editor) return;
+        setShowExportMenu(false);
+        const loadingToast = toast.loading('Exporting Image', 'Generating your image...');
+
+        try {
+            const html2canvas = (await import('html2canvas')).default;
+
+            let allTabsHTML = '';
+            const currentTabs = tabs.map(t =>
+                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+            );
+
+            for (let i = 0; i < currentTabs.length; i++) {
+                const tab = currentTabs[i];
+
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || 'Page ' + (i + 1)}</h2>
+                        </div>
+                    `;
+                }
+
+                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+
+                const tabBoxes = tab.floatingBoxes || [];
+                if (tabBoxes.length > 0) {
+                    allTabsHTML += `<div style="margin-top:20px;">`;
+                    for (const box of tabBoxes) {
+                        const bgColor = box.color || '#3b82f6';
+                        allTabsHTML += `
+                            <div style="
+                                border: 2px solid ${bgColor};
+                                border-radius: 8px;
+                                padding: 12px 16px;
+                                margin-bottom: 12px;
+                                background-color: ${bgColor}15;
+                            ">
+                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
+                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
+                            </div>
+                        `;
+                    }
+                    allTabsHTML += `</div>`;
+                }
+            }
+
+            const printContainer = document.createElement('div');
+            printContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;color:black;padding:40px 50px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;';
+            printContainer.innerHTML = `
+                <h1 style="font-size:32px;margin-bottom:8px;color:#111;">${title || 'Untitled'}</h1>
+                <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
+                    ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+                ${allTabsHTML}
+            `;
+            document.body.appendChild(printContainer);
+
+            const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            document.body.removeChild(printContainer);
+
+            const imgData = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = imgData;
+            a.download = `${title || 'document'}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            toast.updateToast(loadingToast, { title: 'Image Exported', message: `${title || 'document'}.png downloaded`, type: 'success' });
+        } catch (error) {
+            console.error('Image export failed:', error);
+            toast.updateToast(loadingToast, { title: 'Export Failed', message: (error as Error).message, type: 'error' });
+        }
+    };
+
     const openCommentDialog = () => {
         if (!editor) return;
         if (editor.state.selection.empty) {
@@ -1626,6 +1797,18 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                     className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                                 >
                                     📝 Export as Word
+                                </button>
+                                <button
+                                    onClick={handleExportHTML}
+                                    className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors border-t border-zinc-700 mt-1 pt-2"
+                                >
+                                    🌐 Export as HTML
+                                </button>
+                                <button
+                                    onClick={handleExportImage}
+                                    className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+                                >
+                                    🖼️ Export as Image
                                 </button>
                             </div>
                         )}
