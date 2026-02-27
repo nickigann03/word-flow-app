@@ -469,7 +469,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                             {selectedBook.name} {selectedChapter}
                         </h2>
                         <p className="text-center text-xs text-zinc-500 mb-6 italic">
-                            Hover or click any word for definition & original meaning
+                            Click any word for definition & original meaning
                         </p>
                         <div
                             className="space-y-1"
@@ -486,9 +486,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                                             <span
                                                 key={wi}
                                                 onClick={(e) => handleWordClick(word, e)}
-                                                onMouseEnter={(e) => handleWordEnter(word, e)}
-                                                onMouseLeave={handleWordLeave}
-                                                className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-help"
+                                                className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-pointer"
                                             >
                                                 {word}{' '}
                                             </span>
@@ -533,9 +531,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
                                         <span
                                             key={wIdx}
                                             onClick={(e) => handleWordClick(word, e)}
-                                            onMouseEnter={(e) => handleWordEnter(word, e)}
-                                            onMouseLeave={handleWordLeave}
-                                            className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-help inline-block"
+                                            className="hover:text-amber-400 hover:underline decoration-amber-500/30 cursor-pointer inline-block"
                                         >
                                             {word}&nbsp;
                                         </span>
