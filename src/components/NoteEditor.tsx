@@ -1368,31 +1368,35 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     `;
                 }
 
-                // Add tab editor content
+                allTabsHTML += `<div style="position:relative;">`;
                 allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
 
-                // Add floating boxes for this tab
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
-                    allTabsHTML += `<div style="margin-top:20px;">`;
                     for (const box of tabBoxes) {
                         const bgColor = box.color || '#3b82f6';
                         allTabsHTML += `
                             <div style="
+                                position: absolute;
+                                left: ${box.x}%;
+                                top: ${box.y}px;
+                                width: ${box.width}px;
+                                min-height: ${box.height}px;
                                 border: 2px solid ${bgColor};
                                 border-radius: 8px;
-                                padding: 12px 16px;
-                                margin-bottom: 12px;
-                                background-color: ${bgColor}15;
-                                page-break-inside: avoid;
+                                background-color: ${bgColor};
+                                transform: translateX(-50%);
+                                color: white;
+                                z-index: 20;
+                                box-sizing: border-box;
                             ">
-                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
-                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
+                                <div style="padding: 4px 8px; font-size:10px;color:rgba(255,255,255,0.7);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background-color:rgba(0,0,0,0.2);border-top-left-radius: 6px;border-top-right-radius: 6px;">Text Box</div>
+                                <div style="padding: 8px;color:white;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
                             </div>
                         `;
                     }
-                    allTabsHTML += `</div>`;
                 }
+                allTabsHTML += `</div>`;
 
             }
 
@@ -1541,28 +1545,35 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     `;
                 }
 
+                allTabsHTML += `<div style="position:relative;">`;
                 allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
 
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
-                    allTabsHTML += `<div style="margin-top:20px;">`;
                     for (const box of tabBoxes) {
                         const bgColor = box.color || '#3b82f6';
                         allTabsHTML += `
                             <div style="
+                                position: absolute;
+                                left: ${box.x}%;
+                                top: ${box.y}px;
+                                width: ${box.width}px;
+                                min-height: ${box.height}px;
                                 border: 2px solid ${bgColor};
                                 border-radius: 8px;
-                                padding: 12px 16px;
-                                margin-bottom: 12px;
-                                background-color: ${bgColor}15;
+                                background-color: ${bgColor};
+                                transform: translateX(-50%);
+                                color: white;
+                                z-index: 20;
+                                box-sizing: border-box;
                             ">
-                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
-                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>')}</div>
+                                <div style="padding: 4px 8px; font-size:10px;color:rgba(255,255,255,0.7);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background-color:rgba(0,0,0,0.2);border-top-left-radius: 6px;border-top-right-radius: 6px;">Text Box</div>
+                                <div style="padding: 8px;color:white;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>')}</div>
                             </div>
                         `;
                     }
-                    allTabsHTML += `</div>`;
                 }
+                allTabsHTML += `</div>`;
             }
 
             const htmlContent = `
@@ -1638,28 +1649,35 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     `;
                 }
 
+                allTabsHTML += `<div style="position:relative;">`;
                 allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
 
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
-                    allTabsHTML += `<div style="margin-top:20px;">`;
                     for (const box of tabBoxes) {
                         const bgColor = box.color || '#3b82f6';
                         allTabsHTML += `
                             <div style="
+                                position: absolute;
+                                left: ${box.x}%;
+                                top: ${box.y}px;
+                                width: ${box.width}px;
+                                min-height: ${box.height}px;
                                 border: 2px solid ${bgColor};
                                 border-radius: 8px;
-                                padding: 12px 16px;
-                                margin-bottom: 12px;
-                                background-color: ${bgColor}15;
+                                background-color: ${bgColor};
+                                transform: translateX(-50%);
+                                color: white;
+                                z-index: 20;
+                                box-sizing: border-box;
                             ">
-                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
-                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
+                                <div style="padding: 4px 8px; font-size:10px;color:rgba(255,255,255,0.7);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background-color:rgba(0,0,0,0.2);border-top-left-radius: 6px;border-top-right-radius: 6px;">Text Box</div>
+                                <div style="padding: 8px;color:white;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
                             </div>
                         `;
                     }
-                    allTabsHTML += `</div>`;
                 }
+                allTabsHTML += `</div>`;
             }
 
             const printContainer = document.createElement('div');
