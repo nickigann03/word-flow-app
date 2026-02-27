@@ -1349,6 +1349,57 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         try {
             const html2pdf = (await import('html2pdf.js')).default;
 
+            // Build content from ALL tabs, including floating boxes
+            let allTabsHTML = '';
+            // Save current active tab content back before exporting
+            const currentTabs = tabs.map(t =>
+                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+            );
+
+            for (let i = 0; i < currentTabs.length; i++) {
+                const tab = currentTabs[i];
+
+                // Add tab header if there are multiple tabs
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
+                        </div>
+                    `;
+                }
+
+                // Add tab editor content
+                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+
+                // Add floating boxes for this tab
+                const tabBoxes = tab.floatingBoxes || [];
+                if (tabBoxes.length > 0) {
+                    allTabsHTML += `<div style="margin-top:20px;">`;
+                    for (const box of tabBoxes) {
+                        const bgColor = box.color || '#3b82f6';
+                        allTabsHTML += `
+                            <div style="
+                                border: 2px solid ${bgColor};
+                                border-radius: 8px;
+                                padding: 12px 16px;
+                                margin-bottom: 12px;
+                                background-color: ${bgColor}15;
+                                page-break-inside: avoid;
+                            ">
+                                <div style="font-size:10px;color:#888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Text Box</div>
+                                <div style="color:#222;white-space:pre-wrap;font-size:13px;line-height:1.6;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
+                            </div>
+                        `;
+                    }
+                    allTabsHTML += `</div>`;
+                }
+
+                // Add page break between tabs (except after the last one)
+                if (i < currentTabs.length - 1) {
+                    allTabsHTML += `<div style="page-break-after:always;"></div>`;
+                }
+            }
+
             // Create a clean white-background clone for PDF
             const printContainer = document.createElement('div');
             printContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;color:black;padding:40px 50px;font-family:Georgia,serif;font-size:14px;line-height:1.8;';
@@ -1357,7 +1408,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 <p style="font-size:12px;color:#666;margin-bottom:24px;border-bottom:1px solid #ddd;padding-bottom:12px;">
                     ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>
-                <div style="color:#222;">${editor.getHTML()}</div>
+                ${allTabsHTML}
             `;
             document.body.appendChild(printContainer);
 
@@ -1384,6 +1435,57 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setShowExportMenu(false);
 
         try {
+            // Build content from ALL tabs, including floating boxes
+            let allTabsHTML = '';
+            // Save current active tab content back before exporting
+            const currentTabs = tabs.map(t =>
+                t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
+            );
+
+            for (let i = 0; i < currentTabs.length; i++) {
+                const tab = currentTabs[i];
+
+                // Add tab header if there are multiple tabs
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '24pt' : '0'};margin-bottom:8pt;padding-bottom:4pt;border-bottom:2px solid #ccc;">
+                            <h2 style="font-size:18pt;color:#222;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
+                        </div>
+                    `;
+                }
+
+                // Add tab editor content
+                allTabsHTML += tab.content || '';
+
+                // Add floating boxes for this tab
+                const tabBoxes = tab.floatingBoxes || [];
+                if (tabBoxes.length > 0) {
+                    allTabsHTML += `<br/>`;
+                    for (const box of tabBoxes) {
+                        const bgColor = box.color || '#3b82f6';
+                        allTabsHTML += `
+                            <table style="border: 2px solid ${bgColor}; border-collapse: collapse; width: 100%; margin-bottom: 12pt;">
+                                <tr>
+                                    <td style="background-color: ${bgColor}; color: white; padding: 4pt 8pt; font-size: 9pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt;">
+                                        Text Box
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8pt 12pt; font-size: 11pt; line-height: 1.6;">
+                                        ${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}
+                                    </td>
+                                </tr>
+                            </table>
+                        `;
+                    }
+                }
+
+                // Add page break between tabs (except after the last one)
+                if (i < currentTabs.length - 1) {
+                    allTabsHTML += `<br clear="all" style="page-break-before:always;"/>`;
+                }
+            }
+
             const htmlContent = `
                 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
                 <head><meta charset="utf-8"><title>${title || 'Untitled'}</title>
@@ -1399,12 +1501,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     code { background: #f5f5f5; padding: 2px 4px; font-family: 'Courier New', monospace; }
                     pre { background: #f5f5f5; padding: 12px; overflow-x: auto; }
                     hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+                    img { max-width: 100%; height: auto; }
                 </style></head>
                 <body>
                     <h1>${title || 'Untitled'}</h1>
                     <p style="font-size:10pt;color:#888;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                     <hr/>
-                    ${editor.getHTML()}
+                    ${allTabsHTML}
                 </body></html>
             `;
 
