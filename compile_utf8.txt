@@ -1,0 +1,2 @@
+﻿src/components/NoteEditor.tsx(750,13): error TS1117: An object literal cannot have multiple properties with the same name.
+src/components/NoteEditor.tsx(799,13): error TS1117: An object literal cannot have multiple properties with the same name.

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useEditor, EditorContent, FloatingMenu } from '@tiptap/react';
+import { useEditor, EditorContent, FloatingMenu, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
 import Highlight from '@tiptap/extension-highlight';
@@ -53,6 +53,80 @@ import { localSaveAudioBlob } from '@/services/localDb';
 import { useToast } from './Toast';
 
 const lowlight = createLowlight(common);
+
+const ResizableImageNode = (props: any) => {
+    return (
+        <NodeViewWrapper
+            className="resizable-image-wrapper"
+            style={{
+                display: 'inline-block',
+                position: 'relative',
+                width: props.node.attrs.width,
+                height: props.node.attrs.height,
+                maxWidth: '100%',
+                verticalAlign: 'bottom'
+            }}
+        >
+            <img
+                src={props.node.attrs.src}
+                alt={props.node.attrs.alt}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                className={props.selected ? 'ring-2 ring-blue-500 rounded' : 'rounded'}
+            />
+            {props.editor.isEditable && props.selected && (
+                <div
+                    contentEditable={false}
+                    className="absolute bg-blue-500 border-2 border-white rounded-full shadow"
+                    style={{
+                        right: -6, bottom: -6, width: 14, height: 14, cursor: 'nwse-resize', zIndex: 50
+                    }}
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const startX = e.clientX;
+                        const startWidth = e.currentTarget.parentElement?.offsetWidth || 0;
+
+                        const onMouseMove = (moveEvent: MouseEvent) => {
+                            const newWidth = Math.max(50, startWidth + (moveEvent.clientX - startX));
+                            props.updateAttributes({ width: `${newWidth}px`, height: 'auto' });
+                        };
+                        const onMouseUp = () => {
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    }}
+                />
+            )}
+        </NodeViewWrapper>
+    );
+};
+
+const ResizableImage = Image.extend({
+    addAttributes() {
+        return {
+            ...this.parent?.(),
+            width: {
+                default: '100%',
+                renderHTML: attributes => ({
+                    width: attributes.width,
+                    style: `width: ${attributes.width}`
+                })
+            },
+            height: {
+                default: 'auto',
+                renderHTML: attributes => ({
+                    height: attributes.height,
+                    style: `height: ${attributes.height}`
+                })
+            }
+        };
+    },
+    addNodeView() {
+        return ReactNodeViewRenderer(ResizableImageNode);
+    }
+});
 
 interface NoteEditorProps {
     note: Note;
@@ -440,7 +514,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
             FontSize,
             Indent,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
-            Image,
+            ResizableImage,
             Link.configure({
                 openOnClick: false, // Use Ctrl+Click to open
                 autolink: true,
@@ -518,6 +592,37 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         editorProps: {
             attributes: {
                 class: 'prose prose-zinc dark:prose-invert max-w-none focus:outline-none min-h-[500px] outline-none font-sans pl-8 pr-8 py-8',
+            },
+            handleDrop: (view, event, slice, moved) => {
+                if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
+                    const file = event.dataTransfer.files[0];
+                    if (file.type.startsWith('image/')) {
+                        event.preventDefault();
+                        const coords = { left: event.clientX, top: event.clientY };
+                        const result = view.posAtCoords(coords);
+                        if (result) {
+                            (window as any).__processAndUploadImage?.(file, result.pos);
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            },
+            handlePaste: (view, event, slice) => {
+                const items = event.clipboardData?.items;
+                if (items) {
+                    for (const item of items) {
+                        if (item.type.indexOf("image") === 0) {
+                            const file = item.getAsFile();
+                            if (file) {
+                                event.preventDefault();
+                                (window as any).__processAndUploadImage?.(file, view.state.selection.from);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
             },
             handleKeyDown: (view, event) => {
                 // Handle "Book (full)" pattern on Enter
@@ -642,106 +747,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
                 return false;
             },
-            handlePaste: (view, event) => {
-                const items = Array.from(event.clipboardData?.items || []);
-                const imageItem = items.find(item => item.type.startsWith('image'));
-
-                if (imageItem) {
-                    event.preventDefault();
-                    const file = imageItem.getAsFile();
-                    if (!file) return false;
-
-                    // Optimistic update: Insert Blob URL immediately
-                    const blobUrl = URL.createObjectURL(file);
-                    const transaction = view.state.tr.replaceSelectionWith(
-                        view.state.schema.nodes.image.create({ src: blobUrl })
-                    );
-                    view.dispatch(transaction);
-
-                    // Upload in background
-                    // Upload in background
-                    setAiLoading(true);
-
-                    supabaseService.uploadImage(note.userId, file)
-                        .then((downloadUrl) => {
-                            // Find the image with the blob URL and replace its source
-                            // We need to search the doc because the position might have changed
-                            view.state.doc.descendants((node, pos) => {
-                                if (node.type.name === 'image' && node.attrs.src === blobUrl) {
-                                    const tr = view.state.tr.setNodeMarkup(pos, undefined, {
-                                        ...node.attrs,
-                                        src: downloadUrl
-                                    });
-                                    view.dispatch(tr);
-                                    return false; // Stop searching
-                                }
-                            });
-
-                            setAiLoading(false);
-                            toast.success('Image Uploaded', 'Sync complete');
-                        })
-                        .catch(e => {
-                            console.error('Upload failed', e);
-                            setAiLoading(false);
-                            toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
-                            // Optional: Mark image as error or remove it
-                        });
-
-                    return true;
-                }
-                return false;
-            },
-            handleDrop: (view, event, _slice, moved) => {
-                if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
-                    const file = event.dataTransfer.files[0];
-                    if (file.type.startsWith('image')) {
-                        event.preventDefault();
-
-                        // Optimistic update
-                        const blobUrl = URL.createObjectURL(file);
-                        const { schema } = view.state;
-                        const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
-
-                        // Insert at drop position
-                        if (coordinates) {
-                            const transaction = view.state.tr.insert(
-                                coordinates.pos,
-                                schema.nodes.image.create({ src: blobUrl })
-                            );
-                            view.dispatch(transaction);
-                        }
-
-                        // Upload in background
-                        // Upload in background
-                        setAiLoading(true);
-
-                        supabaseService.uploadImage(note.userId, file)
-                            .then((downloadUrl) => {
-                                view.state.doc.descendants((node, pos) => {
-                                    if (node.type.name === 'image' && node.attrs.src === blobUrl) {
-                                        const tr = view.state.tr.setNodeMarkup(pos, undefined, {
-                                            ...node.attrs,
-                                            src: downloadUrl
-                                        });
-                                        view.dispatch(tr);
-                                        return false;
-                                    }
-                                });
-
-                                setAiLoading(false);
-                                toast.success('Image Uploaded', 'Sync complete');
-                            })
-                            .catch(e => {
-                                console.error('Upload failed', e);
-                                setAiLoading(false);
-                                toast.error('Upload Failed', `Could not sync image: ${(e as Error).message}`);
-                            });
-
-                        return true;
-                    }
-                }
-                return false;
-            }
         },
         onUpdate: ({ editor }) => {
             // Close slash menu if cursor moves
@@ -1783,17 +1788,16 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setCommentSelection(null);
     };
 
-    const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const loadingToast = toast.loading('Processing Image', 'Compressing & uploading...');
-            try {
-                // Client-side compression
-                const compressedFile = await new Promise<File>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const img = new window.Image();
-                        img.onload = () => {
+    const processAndUploadImage = async (file: File, pos?: number) => {
+        const loadingToast = toast.loading('Processing Image', 'Compressing & uploading...');
+        try {
+            // Client-side compression
+            const compressedFile = await new Promise<File>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new window.Image();
+                    img.onload = () => {
+                        try {
                             const canvas = document.createElement('canvas');
                             let width = img.width;
                             let height = img.height;
@@ -1816,7 +1820,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                 ctx.drawImage(img, 0, 0, width, height);
                                 canvas.toBlob((blob) => {
                                     if (blob) {
-                                        resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
+                                        resolve(new File([blob], file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "pasted-image.jpg", { type: 'image/jpeg' }));
                                     } else {
                                         resolve(file); // fallback to original if compression fails
                                     }
@@ -1824,31 +1828,52 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                             } else {
                                 resolve(file);
                             }
-                        };
-                        img.onerror = () => resolve(file);
-                        img.src = event.target?.result as string;
+                        } catch (e) {
+                            resolve(file); // absolute safety fallback
+                        }
                     };
-                    reader.onerror = () => resolve(file);
-                    reader.readAsDataURL(file);
-                });
+                    img.onerror = () => resolve(file);
+                    img.src = event.target?.result as string;
+                };
+                reader.onerror = () => resolve(file);
+                reader.readAsDataURL(file);
+            });
 
-                const url = await supabaseService.uploadImage(note.userId, compressedFile);
-                if (editor && url) {
+            const url = await supabaseService.uploadImage(note.userId, compressedFile);
+            if (editor && url) {
+                if (typeof pos === 'number') {
+                    editor.chain().focus().insertContentAt(pos, { type: 'image', attrs: { src: url } }).run();
+                } else {
                     editor.chain().focus().setImage({ src: url }).run();
-                    toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
                 }
-            } catch (error) {
-                console.error('Image upload failed:', error);
-
-                // Intelligent fallback handling for missing bucket or CORS error
-                let errorMsg = (error as Error).message || 'Unknown error occurred.';
-                if (errorMsg.includes('not found') || errorMsg.includes('Bucket')) {
-                    errorMsg = "Storage bucket missing or no permissions.";
-                } else if (errorMsg.includes('timed out')) {
-                    errorMsg = "Check your connection. Upload timed out.";
-                }
-                toast.updateToast(loadingToast, { title: 'Upload Failed', message: errorMsg, type: 'error' });
+                toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
             }
+        } catch (error) {
+            console.error('Image upload failed:', error);
+
+            // Intelligent fallback handling for missing bucket or CORS error
+            let errorMsg = (error as Error).message || 'Unknown error occurred.';
+            if (errorMsg.includes('not found') || errorMsg.includes('Bucket')) {
+                errorMsg = "Storage bucket missing or no permissions.";
+            } else if (errorMsg.includes('timed out')) {
+                errorMsg = "Check your connection. Upload timed out.";
+            }
+            toast.updateToast(loadingToast, { title: 'Upload Failed', message: errorMsg, type: 'error' });
+        }
+    };
+
+    // Mount function on window so editorProps can access without stale closures
+    useEffect(() => {
+        (window as any).__processAndUploadImage = processAndUploadImage;
+        return () => {
+            delete (window as any).__processAndUploadImage;
+        };
+    }, [editor, note.userId]);
+
+    const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            await processAndUploadImage(file);
         }
         if (e.target) e.target.value = '';
     };
