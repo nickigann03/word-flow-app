@@ -663,17 +663,35 @@ class SupabaseService {
         const fileExt = file.name.split('.').pop();
         const fileName = `${userId}/${crypto.randomUUID()}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage
-            .from('images')
-            .upload(fileName, file);
+        // Timeout wrapper to prevent hanging forever if Storage is unreachable or bucket is missing
+        const uploadWithTimeout = async (timeoutMs: number = 30000): Promise<string> => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        if (uploadError) throw uploadError;
+            try {
+                const { error: uploadError } = await supabase.storage
+                    .from('images')
+                    .upload(fileName, file);
 
-        const { data } = supabase.storage
-            .from('images')
-            .getPublicUrl(fileName);
+                clearTimeout(timeoutId);
 
-        return data.publicUrl;
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('images')
+                    .getPublicUrl(fileName);
+
+                return data.publicUrl;
+            } catch (error: any) {
+                clearTimeout(timeoutId);
+                if (error?.name === 'AbortError') {
+                    throw new Error('Image upload timed out after 30 seconds. Please check your internet connection or try a smaller image.');
+                }
+                throw error;
+            }
+        };
+
+        return uploadWithTimeout();
     }
 
     async uploadAudio(userId: string, blob: Blob, filename: string): Promise<string> {

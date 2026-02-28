@@ -1786,16 +1786,68 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const loadingToast = toast.loading('Uploading Image', 'Please wait...');
+            const loadingToast = toast.loading('Processing Image', 'Compressing & uploading...');
             try {
-                const url = await supabaseService.uploadImage(note.userId, file);
+                // Client-side compression
+                const compressedFile = await new Promise<File>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = new window.Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+                            const MAX_WIDTH = 1920;
+                            const MAX_HEIGHT = 1080;
+
+                            if (width > MAX_WIDTH) {
+                                height = Math.round((height * MAX_WIDTH) / width);
+                                width = MAX_WIDTH;
+                            }
+                            if (height > MAX_HEIGHT) {
+                                width = Math.round((width * MAX_HEIGHT) / height);
+                                height = MAX_HEIGHT;
+                            }
+
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                                ctx.drawImage(img, 0, 0, width, height);
+                                canvas.toBlob((blob) => {
+                                    if (blob) {
+                                        resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
+                                    } else {
+                                        resolve(file); // fallback to original if compression fails
+                                    }
+                                }, 'image/jpeg', 0.82);
+                            } else {
+                                resolve(file);
+                            }
+                        };
+                        img.onerror = () => resolve(file);
+                        img.src = event.target?.result as string;
+                    };
+                    reader.onerror = () => resolve(file);
+                    reader.readAsDataURL(file);
+                });
+
+                const url = await supabaseService.uploadImage(note.userId, compressedFile);
                 if (editor && url) {
                     editor.chain().focus().setImage({ src: url }).run();
                     toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
                 }
             } catch (error) {
                 console.error('Image upload failed:', error);
-                toast.updateToast(loadingToast, { title: 'Upload Failed', message: (error as Error).message, type: 'error' });
+
+                // Intelligent fallback handling for missing bucket or CORS error
+                let errorMsg = (error as Error).message || 'Unknown error occurred.';
+                if (errorMsg.includes('not found') || errorMsg.includes('Bucket')) {
+                    errorMsg = "Storage bucket missing or no permissions.";
+                } else if (errorMsg.includes('timed out')) {
+                    errorMsg = "Check your connection. Upload timed out.";
+                }
+                toast.updateToast(loadingToast, { title: 'Upload Failed', message: errorMsg, type: 'error' });
             }
         }
         if (e.target) e.target.value = '';
