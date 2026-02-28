@@ -1357,20 +1357,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
             );
 
+            const editorWidth = editorRef.current?.clientWidth || 1000;
+            const isLandscape = pageOrientation === 'landscape';
+            const contentMaxWidth = isLandscape ? '95%' : (marginSize === 'wide' ? '1024px' : '768px');
+            const contentPadding = marginSize === 'narrow' ? '24px 48px' : (marginSize === 'wide' ? '24px 96px' : '48px 64px');
+
             for (let i = 0; i < currentTabs.length; i++) {
                 const tab = currentTabs[i];
 
-                // Add tab header if there are multiple tabs
-                if (currentTabs.length > 1) {
-                    allTabsHTML += `
-                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
-                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
-                        </div>
-                    `;
-                }
-
-                allTabsHTML += `<div style="position:relative;">`;
-                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+                allTabsHTML += `<div style="position:relative; width:${editorWidth}px; margin-bottom:2rem;">`;
 
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
@@ -1397,18 +1392,34 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                         `;
                     }
                 }
-                allTabsHTML += `</div>`;
+
+                allTabsHTML += `<div style="margin: 0 auto; max-width: ${contentMaxWidth}; padding: ${contentPadding}; background: white; box-sizing: border-box; min-height: 800px; color: #222;">`;
+
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
+                        </div>
+                    `;
+                }
+
+                allTabsHTML += `<div style="color:#222;" class="ProseMirror">${tab.content || ''}</div>`;
+                allTabsHTML += `</div></div>`;
             }
 
-            // Create a clean white-background clone for PDF
+            // Create a clean background clone for PDF
             const printContainer = document.createElement('div');
-            printContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;color:black;padding:40px 50px;font-family:Georgia,serif;font-size:14px;line-height:1.8;';
+            printContainer.style.cssText = `position:fixed;left:-9999px;top:0;width:${editorWidth}px;background:#f4f4f5;color:black;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;`;
             printContainer.innerHTML = `
-                <h1 style="font-size:28px;margin-bottom:8px;color:#111;">${title || 'Untitled'}</h1>
-                <p style="font-size:12px;color:#666;margin-bottom:24px;border-bottom:1px solid #ddd;padding-bottom:12px;">
-                    ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
-                ${allTabsHTML}
+                <div style="padding: 40px 0;">
+                    <div style="max-width: ${contentMaxWidth}; margin: 0 auto; margin-bottom: 24px; padding: 0 ${parseInt(contentPadding.split(' ')[1] || '48')}px;">
+                        <h1 style="font-size:28px;margin-bottom:8px;color:#111;font-weight:bold;">${title || 'Untitled'}</h1>
+                        <p style="font-size:12px;color:#666;border-bottom:1px solid #ddd;padding-bottom:12px;">
+                            ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </p>
+                    </div>
+                    ${allTabsHTML}
+                </div>
             `;
             document.body.appendChild(printContainer);
 
@@ -1544,19 +1555,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
             );
 
+            const editorWidth = editorRef.current?.clientWidth || 1000;
+            const isLandscape = pageOrientation === 'landscape';
+            const contentMaxWidth = isLandscape ? '95%' : (marginSize === 'wide' ? '1024px' : '768px');
+            const contentPadding = marginSize === 'narrow' ? '24px 48px' : (marginSize === 'wide' ? '24px 96px' : '48px 64px');
+
             for (let i = 0; i < currentTabs.length; i++) {
                 const tab = currentTabs[i];
 
-                if (currentTabs.length > 1) {
-                    allTabsHTML += `
-                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
-                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || 'Page ' + (i + 1)}</h2>
-                        </div>
-                    `;
-                }
-
-                allTabsHTML += `<div style="position:relative;">`;
-                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+                allTabsHTML += `<div style="position:relative; width:${editorWidth}px; margin: 0 auto; margin-bottom:2rem;">`;
 
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
@@ -1578,12 +1585,24 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                 box-sizing: border-box;
                             ">
                                 <div style="padding: 4px 8px; font-size:10px;color:rgba(255,255,255,0.7);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background-color:rgba(0,0,0,0.2);border-top-left-radius: 6px;border-top-right-radius: 6px;">Text Box</div>
-                                <div style="padding: 8px;color:white;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>')}</div>
+                                <div style="padding: 8px;color:white;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">${(box.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>
                             </div>
                         `;
                     }
                 }
-                allTabsHTML += `</div>`;
+
+                allTabsHTML += `<div style="margin: 0 auto; max-width: ${contentMaxWidth}; padding: ${contentPadding}; background: white; box-sizing: border-box; min-height: 800px; color: #222; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">`;
+
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
+                        </div>
+                    `;
+                }
+
+                allTabsHTML += `<div style="color:#222;" class="ProseMirror">${tab.content || ''}</div>`;
+                allTabsHTML += `</div></div>`;
             }
 
             const htmlContent = `
@@ -1593,27 +1612,33 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     <meta charset="utf-8">
                     <title>${title || 'Untitled'}</title>
                     <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #222; max-width: 800px; margin: 0 auto; padding: 40px; }
-                        h1 { font-size: 32px; color: #111; margin-bottom: 8px; }
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #222; background: #f4f4f5; margin: 0; padding: 40px 0; overflow-x: auto; }
+                        h1 { font-size: 32px; color: #111; margin-bottom: 8px; font-weight: bold; }
                         h2 { font-size: 24px; color: #222; margin-top: 24px; }
                         h3 { font-size: 20px; color: #333; }
                         blockquote { border-left: 4px solid #e5e7eb; padding-left: 16px; margin-left: 0; color: #4b5563; font-style: italic; }
-                        table { border-collapse: collapse; width: 100%; }
+                        table { border-collapse: collapse; width: 100%; margin: 16px 0; }
                         td, th { border: 1px solid #e5e7eb; padding: 8px 12px; }
-                        th { background: #f9fafb; }
+                        th { background: #f9fafb; text-align: left; }
                         code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9em; }
                         pre { background: #f3f4f6; padding: 16px; border-radius: 8px; overflow-x: auto; }
                         pre code { background: none; padding: 0; }
                         hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
-                        img { max-width: 100%; height: auto; border-radius: 8px; }
+                        img { max-width: 100%; height: auto; border-radius: 8px; margin: 16px 0; }
+                        .ProseMirror p { margin: 0.5em 0; }
+                        .ProseMirror ul, .ProseMirror ol { padding-left: 1.5rem; margin: 0.5em 0; }
                     </style>
                 </head>
                 <body>
-                    <h1>${title || 'Untitled'}</h1>
-                    <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
-                        ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    </p>
-                    ${allTabsHTML}
+                    <div style="width: ${editorWidth}px; margin: 0 auto; box-sizing: border-box;">
+                        <div style="max-width: ${contentMaxWidth}; margin: 0 auto; margin-bottom: 24px; padding: 0 ${parseInt(contentPadding.split(' ')[1] || '48')}px; box-sizing: border-box;">
+                            <h1>${title || 'Untitled'}</h1>
+                            <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
+                                ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            </p>
+                        </div>
+                        ${allTabsHTML}
+                    </div>
                 </body>
                 </html>
             `;
@@ -1648,19 +1673,15 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                 t.id === activeTabId ? { ...t, content: editor.getHTML() } : t
             );
 
+            const editorWidth = editorRef.current?.clientWidth || 1000;
+            const isLandscape = pageOrientation === 'landscape';
+            const contentMaxWidth = isLandscape ? '95%' : (marginSize === 'wide' ? '1024px' : '768px');
+            const contentPadding = marginSize === 'narrow' ? '24px 48px' : (marginSize === 'wide' ? '24px 96px' : '48px 64px');
+
             for (let i = 0; i < currentTabs.length; i++) {
                 const tab = currentTabs[i];
 
-                if (currentTabs.length > 1) {
-                    allTabsHTML += `
-                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
-                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || 'Page ' + (i + 1)}</h2>
-                        </div>
-                    `;
-                }
-
-                allTabsHTML += `<div style="position:relative;">`;
-                allTabsHTML += `<div style="color:#222;">${tab.content || ''}</div>`;
+                allTabsHTML += `<div style="position:relative; width:${editorWidth}px; margin-bottom:2rem;">`;
 
                 const tabBoxes = tab.floatingBoxes || [];
                 if (tabBoxes.length > 0) {
@@ -1687,17 +1708,33 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                         `;
                     }
                 }
-                allTabsHTML += `</div>`;
+
+                allTabsHTML += `<div style="margin: 0 auto; max-width: ${contentMaxWidth}; padding: ${contentPadding}; background: white; box-sizing: border-box; min-height: 800px; color: #222;">`;
+
+                if (currentTabs.length > 1) {
+                    allTabsHTML += `
+                        <div style="margin-top:${i > 0 ? '32px' : '0'};margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">
+                            <h2 style="font-size:20px;color:#333;margin:0;">${tab.title || `Page ${i + 1}`}</h2>
+                        </div>
+                    `;
+                }
+
+                allTabsHTML += `<div style="color:#222;" class="ProseMirror">${tab.content || ''}</div>`;
+                allTabsHTML += `</div></div>`;
             }
 
             const printContainer = document.createElement('div');
-            printContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;color:black;padding:40px 50px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;';
+            printContainer.style.cssText = `position:fixed;left:-9999px;top:0;width:${editorWidth}px;background:#f4f4f5;color:black;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;`;
             printContainer.innerHTML = `
-                <h1 style="font-size:32px;margin-bottom:8px;color:#111;">${title || 'Untitled'}</h1>
-                <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
-                    ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
-                ${allTabsHTML}
+                <div style="padding: 40px 0;">
+                    <div style="max-width: ${contentMaxWidth}; margin: 0 auto; margin-bottom: 24px; padding: 0 ${parseInt(contentPadding.split(' ')[1] || '48')}px; box-sizing: border-box;">
+                        <h1 style="font-size:32px;margin-bottom:8px;color:#111;font-weight:bold;">${title || 'Untitled'}</h1>
+                        <p style="font-size:14px;color:#6b7280;margin-bottom:32px;border-bottom:1px solid #e5e7eb;padding-bottom:16px;">
+                            ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </p>
+                    </div>
+                    ${allTabsHTML}
+                </div>
             `;
             document.body.appendChild(printContainer);
 
