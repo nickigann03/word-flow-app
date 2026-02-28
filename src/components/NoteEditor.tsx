@@ -1780,9 +1780,29 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     };
 
     const addImage = () => {
-        const url = prompt("Image URL:");
-        if (url && editor) { editor.chain().focus().setImage({ src: url }).run(); }
-    }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+
+        input.onchange = async (e: any) => {
+            const file = e.target.files?.[0];
+            if (file) {
+                const loadingToast = toast.loading('Uploading Image', 'Please wait...');
+                try {
+                    const url = await supabaseService.uploadImage(note.userId, file);
+                    if (editor && url) {
+                        editor.chain().focus().setImage({ src: url }).run();
+                        toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
+                    }
+                } catch (error) {
+                    console.error('Image upload failed:', error);
+                    toast.updateToast(loadingToast, { title: 'Upload Failed', message: (error as Error).message, type: 'error' });
+                }
+            }
+        };
+
+        input.click();
+    };
 
     // Filter slash commands
     const filteredSlashCommands = slashCommands.filter(cmd =>
