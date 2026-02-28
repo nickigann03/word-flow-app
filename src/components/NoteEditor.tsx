@@ -69,7 +69,7 @@ interface SlashCommand {
     title: string;
     description: string;
     icon: React.ReactNode;
-    command: (editor: any) => void;
+    command: (editor: any, actions?: { triggerImageUpload?: () => void }) => void;
     category: string;
 }
 
@@ -194,11 +194,15 @@ const slashCommands: SlashCommand[] = [
     // Media
     {
         title: 'Image',
-        description: 'Insert an image via URL',
+        description: 'Insert an image from your device',
         icon: <ImageIcon className="w-4 h-4" />,
-        command: (editor) => {
-            const url = prompt("Enter image URL:");
-            if (url) editor.chain().focus().setImage({ src: url }).run();
+        command: (editor, actions) => {
+            if (actions?.triggerImageUpload) {
+                actions.triggerImageUpload();
+            } else {
+                const url = prompt("Enter image URL:");
+                if (url) editor.chain().focus().setImage({ src: url }).run();
+            }
         },
         category: 'Media'
     },
@@ -617,7 +621,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                         const tr = state.tr.delete(deleteFrom, state.selection.from);
                         dispatch(tr);
                         // Execute command
-                        filteredCommands[selectedSlashIndex].command(editor);
+                        filteredCommands[selectedSlashIndex].command(editor, { triggerImageUpload: () => document.getElementById('hidden-image-upload')?.click() });
                         setShowSlashMenu(false);
                         return true;
                     }
@@ -1779,29 +1783,26 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
         setCommentSelection(null);
     };
 
-    const addImage = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-
-        input.onchange = async (e: any) => {
-            const file = e.target.files?.[0];
-            if (file) {
-                const loadingToast = toast.loading('Uploading Image', 'Please wait...');
-                try {
-                    const url = await supabaseService.uploadImage(note.userId, file);
-                    if (editor && url) {
-                        editor.chain().focus().setImage({ src: url }).run();
-                        toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
-                    }
-                } catch (error) {
-                    console.error('Image upload failed:', error);
-                    toast.updateToast(loadingToast, { title: 'Upload Failed', message: (error as Error).message, type: 'error' });
+    const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const loadingToast = toast.loading('Uploading Image', 'Please wait...');
+            try {
+                const url = await supabaseService.uploadImage(note.userId, file);
+                if (editor && url) {
+                    editor.chain().focus().setImage({ src: url }).run();
+                    toast.updateToast(loadingToast, { title: 'Upload Success', message: 'Image inserted.', type: 'success' });
                 }
+            } catch (error) {
+                console.error('Image upload failed:', error);
+                toast.updateToast(loadingToast, { title: 'Upload Failed', message: (error as Error).message, type: 'error' });
             }
-        };
+        }
+        if (e.target) e.target.value = '';
+    };
 
-        input.click();
+    const addImage = () => {
+        document.getElementById('hidden-image-upload')?.click();
     };
 
     // Filter slash commands
@@ -1846,6 +1847,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
     return (
         <div className="flex flex-col h-full bg-zinc-950 relative">
+            <input
+                id="hidden-image-upload"
+                type="file"
+                className="hidden"
+                accept="image/*"
+                onChange={handleImageFileChange}
+            />
             {/* Main Toolbar */}
             <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur sticky top-0 z-30 shrink-0">
                 <div className="flex items-center gap-1">
@@ -2570,7 +2578,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                                                     const deleteFrom = state.selection.from - slashFilter.length - 1;
                                                     const tr = state.tr.delete(deleteFrom, state.selection.from);
                                                     view.dispatch(tr);
-                                                    cmd.command(editor);
+                                                    cmd.command(editor, { triggerImageUpload: () => document.getElementById('hidden-image-upload')?.click() });
                                                 }
                                                 setShowSlashMenu(false);
                                             }}
