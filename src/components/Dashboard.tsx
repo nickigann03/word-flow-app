@@ -7,7 +7,7 @@ import { ReformedAIChat } from './ReformedAIChat';
 import RecordingsLibrary from './RecordingsLibrary';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import supabaseService, { Folder, Note } from '@/services/supabaseService';
-import { Plus, FileText, LayoutTemplate, Trash2, Search, Folder as FolderIcon, FolderOpen, ChevronRight } from 'lucide-react';
+import { Plus, FileText, LayoutTemplate, Trash2, Search, Folder as FolderIcon, FolderOpen, ChevronRight, FolderInput } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BASE_TEMPLATES } from '@/data/sermonTemplates';
 import type { Template } from '@/data/sermonTemplates';
@@ -48,6 +48,8 @@ export function Dashboard() {
     const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
     const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
     const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+    const [noteToMove, setNoteToMove] = useState<string | null>(null);
+    const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
     const [customTemplates, setCustomTemplates] = useState<Template[]>([]);
 
     // Reference to the NoteEditor for inserting content
@@ -238,6 +240,38 @@ export function Dashboard() {
     const handleInsertVerse = useCallback((text: string, reference: string) => {
         setPendingInsert({ text, reference });
     }, []);
+
+    // Move note to a different folder
+    const handleMoveNote = async () => {
+        if (!noteToMove) return;
+        const note = notes.find(n => n.id === noteToMove);
+        if (!note) return;
+
+        const updatedNote = { ...note, folderId: targetFolderId };
+
+        // Optimistic UI
+        const previousNotes = [...notes];
+        setNotes(prev => prev.map(n => n.id === noteToMove ? updatedNote : n));
+        if (selectedNote?.id === noteToMove) {
+            setSelectedNote(updatedNote);
+        }
+        setNoteToMove(null);
+        setTargetFolderId(null);
+
+        const folderName = targetFolderId
+            ? folders.find(f => f.id === targetFolderId)?.title || 'folder'
+            : 'No Folder';
+        toast.success('Note Moved', `Moved to ${folderName}`);
+
+        try {
+            await supabaseService.updateNote(noteToMove, { folderId: targetFolderId });
+        } catch (error) {
+            console.error('Failed to move note:', error);
+            setNotes(previousNotes);
+            toast.error('Move Failed', 'Could not move note to the selected folder.');
+        }
+    };
+
 
     // Toggle handlers for panels
     const handleToggleBible = () => setIsBibleOpen(prev => !prev);
@@ -617,6 +651,19 @@ export function Dashboard() {
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
+                                                            if (note.id) {
+                                                                setNoteToMove(note.id);
+                                                                setTargetFolderId(note.folderId || null);
+                                                            }
+                                                        }}
+                                                        className="p-1 bg-zinc-800/60 hover:bg-blue-500/20 text-zinc-600 hover:text-blue-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
+                                                        title="Move to Folder"
+                                                    >
+                                                        <FolderInput className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             if (note.id) handleDeleteNote(note.id);
                                                         }}
                                                         className="p-1 bg-zinc-800/60 hover:bg-red-500/20 text-zinc-600 hover:text-red-400 rounded-md opacity-0 group-hover:opacity-100 transition-all"
@@ -806,6 +853,74 @@ export function Dashboard() {
                             className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
                         >
                             Delete Note
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Move Note to Folder Modal */}
+            <Modal
+                isOpen={!!noteToMove}
+                onClose={() => { setNoteToMove(null); setTargetFolderId(null); }}
+                title="Move to Folder"
+            >
+                <div className="space-y-4">
+                    <p className="text-zinc-400 text-sm">
+                        Select a folder to move this note into, or choose "No Folder" to remove it from its current folder.
+                    </p>
+                    <div className="max-h-64 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                        {/* No Folder option */}
+                        <button
+                            onClick={() => setTargetFolderId(null)}
+                            className={cn(
+                                "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-lg transition-all",
+                                targetFolderId === null
+                                    ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent"
+                            )}
+                        >
+                            <FileText className="w-4 h-4 shrink-0" />
+                            <span>No Folder (Uncategorized)</span>
+                        </button>
+                        {/* Folder tree */}
+                        {(() => {
+                            const renderFolderOptions = (parentId: string | null, depth: number = 0): React.ReactNode[] => {
+                                return folders
+                                    .filter(f => (f.parentId || null) === parentId)
+                                    .map(folder => [
+                                        <button
+                                            key={folder.id}
+                                            onClick={() => setTargetFolderId(folder.id!)}
+                                            className={cn(
+                                                "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-lg transition-all",
+                                                targetFolderId === folder.id
+                                                    ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent"
+                                            )}
+                                            style={{ paddingLeft: 12 + depth * 20 }}
+                                        >
+                                            <FolderIcon className="w-4 h-4 shrink-0" />
+                                            <span className="truncate">{folder.title}</span>
+                                        </button>,
+                                        ...renderFolderOptions(folder.id!, depth + 1)
+                                    ])
+                                    .flat();
+                            };
+                            return renderFolderOptions(null);
+                        })()}
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            onClick={() => { setNoteToMove(null); setTargetFolderId(null); }}
+                            className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleMoveNote}
+                            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                        >
+                            Move Note
                         </button>
                     </div>
                 </div>
