@@ -197,7 +197,7 @@ export function BibleReader({ isOpen, onClose, onInsertVerse }: BibleReaderProps
 
     return (
         <div
-            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 overflow-hidden relative"
+            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 overflow-hidden relative z-30"
             style={{ width: isExpanded ? 600 : panelWidth }}
         >
             {/* Resize Handle */}

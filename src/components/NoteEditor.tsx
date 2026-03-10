@@ -1017,10 +1017,13 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
     };
 
     const addFloatingBox = () => {
+        // Calculate scroll position so box appears in view
+        const spawnY = editorRef.current ? editorRef.current.scrollTop + 100 : 200;
+
         const newBox = {
             id: `box-${Date.now()}`,
             x: 50,  // Center horizontally (percentage)
-            y: 200, // 200px from top
+            y: spawnY,
             width: 200,
             height: 100,
             content: '',
@@ -1947,6 +1950,12 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
                     <button onClick={() => setShowImportDialog(true)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="Import Transcript / YouTube"><Upload className="w-4 h-4" /></button>
                     {/* Export Dropdown */}
                     <div className="relative">
+                        {showExportMenu && (
+                            <div
+                                className="fixed inset-0 z-[40]"
+                                onClick={() => setShowExportMenu(false)}
+                            />
+                        )}
                         <button
                             onClick={() => setShowExportMenu(!showExportMenu)}
                             className={cn("p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors", showExportMenu && "bg-zinc-800 text-white")}
@@ -1987,6 +1996,12 @@ export function NoteEditor({ note, onSave, onExport, onDelete, onSaveAsTemplate,
 
                     {/* Page Settings */}
                     <div className="relative">
+                        {showPageSettings && (
+                            <div
+                                className="fixed inset-0 z-[40]"
+                                onClick={() => setShowPageSettings(false)}
+                            />
+                        )}
                         <button
                             onClick={() => setShowPageSettings(!showPageSettings)}
                             className={cn("p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors", showPageSettings && "bg-zinc-800 text-white")}

@@ -211,7 +211,7 @@ export function ReformedAIChat({ isOpen, onClose, onInsertVerse, noteContext, no
 
     return (
         <div
-            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 relative"
+            className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 transition-[width] duration-100 relative z-30"
             style={{ width: isExpanded ? 550 : panelWidth }}
         >
             {/* Resize Handle */}
